@@ -1,0 +1,210 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root,
+  html[data-theme="dark"] {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 44% 15%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 44% 15%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 222 36% 21%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 221 32% 28%;
+    --muted-foreground: 217 24% 65%;
+    --accent: 221 70% 52%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 221 34% 32%;
+    --input: 221 34% 32%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 262 83% 66%;
+    --chart-3: 346 77% 60%;
+    --chart-4: 32 95% 56%;
+    --chart-5: 164 86% 42%;
+
+    --wf-bg: hsl(var(--background));
+    --wf-sidebar: hsl(222 47% 13%);
+    --wf-surface: hsl(var(--card));
+    --wf-surface-2: hsl(var(--secondary));
+    --wf-border: hsl(var(--border));
+    --wf-text: hsl(var(--foreground));
+    --wf-text-2: hsl(213 55% 92%);
+    --wf-text-3: hsl(214 48% 84%);
+    --wf-muted-1: hsl(216 38% 74%);
+    --wf-muted-2: hsl(var(--muted-foreground));
+    --wf-muted-3: hsl(217 22% 52%);
+    --wf-accent: hsl(var(--primary));
+    --wf-accent-hover: hsl(var(--accent));
+  }
+
+  html[data-theme="light"] {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 84% 45%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 32% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 93%;
+    --muted-foreground: 215 21% 42%;
+    --accent: 222 60% 40%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 53%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 26% 83%;
+    --input: 214 26% 83%;
+    --ring: 222 84% 45%;
+    --chart-1: 222 84% 45%;
+    --chart-2: 262 72% 58%;
+    --chart-3: 344 78% 54%;
+    --chart-4: 28 92% 50%;
+    --chart-5: 162 78% 36%;
+
+    --wf-bg: hsl(var(--background));
+    --wf-sidebar: hsl(210 36% 94%);
+    --wf-surface: hsl(var(--card));
+    --wf-surface-2: hsl(var(--secondary));
+    --wf-border: hsl(var(--border));
+    --wf-text: hsl(var(--foreground));
+    --wf-text-2: hsl(222 32% 20%);
+    --wf-text-3: hsl(218 29% 33%);
+    --wf-muted-1: hsl(216 25% 41%);
+    --wf-muted-2: hsl(var(--muted-foreground));
+    --wf-muted-3: hsl(215 20% 58%);
+    --wf-accent: hsl(var(--primary));
+    --wf-accent-hover: hsl(var(--accent));
+  }
+
+  html[data-theme="ocean"] {
+    --background: 199 69% 8%;
+    --foreground: 188 68% 95%;
+    --card: 198 63% 14%;
+    --card-foreground: 188 68% 95%;
+    --popover: 198 63% 14%;
+    --popover-foreground: 188 68% 95%;
+    --primary: 174 84% 39%;
+    --primary-foreground: 188 68% 95%;
+    --secondary: 197 52% 21%;
+    --secondary-foreground: 188 68% 95%;
+    --muted: 198 43% 24%;
+    --muted-foreground: 192 36% 68%;
+    --accent: 183 87% 35%;
+    --accent-foreground: 188 68% 95%;
+    --destructive: 0 78% 58%;
+    --destructive-foreground: 188 68% 95%;
+    --border: 196 52% 33%;
+    --input: 196 52% 33%;
+    --ring: 174 84% 39%;
+    --chart-1: 174 84% 39%;
+    --chart-2: 199 89% 48%;
+    --chart-3: 162 74% 45%;
+    --chart-4: 32 92% 55%;
+    --chart-5: 265 73% 63%;
+
+    --wf-bg: hsl(var(--background));
+    --wf-sidebar: hsl(199 69% 11%);
+    --wf-surface: hsl(var(--card));
+    --wf-surface-2: hsl(var(--secondary));
+    --wf-border: hsl(var(--border));
+    --wf-text: hsl(var(--foreground));
+    --wf-text-2: hsl(190 63% 87%);
+    --wf-text-3: hsl(189 52% 77%);
+    --wf-muted-1: hsl(192 40% 70%);
+    --wf-muted-2: hsl(var(--muted-foreground));
+    --wf-muted-3: hsl(193 31% 57%);
+    --wf-accent: hsl(var(--primary));
+    --wf-accent-hover: hsl(var(--accent));
+  }
+
+  html,
+  body {
+    @apply min-h-screen antialiased;
+    background-color: var(--wf-bg);
+    color: var(--wf-text);
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+}
+
+@layer utilities {
+  .bg-\[\#0d0f14\] {
+    background-color: var(--wf-bg) !important;
+  }
+
+  .bg-\[\#10131b\] {
+    background-color: var(--wf-sidebar) !important;
+  }
+
+  .bg-\[\#13161e\] {
+    background-color: var(--wf-surface) !important;
+  }
+
+  .bg-\[\#1c2030\] {
+    background-color: var(--wf-surface-2) !important;
+  }
+
+  .border-\[\#252a3a\] {
+    border-color: var(--wf-border) !important;
+  }
+
+  .bg-\[\#5b8dee\] {
+    background-color: var(--wf-accent) !important;
+  }
+
+  .hover\:bg-\[\#4a7ce0\]:hover {
+    background-color: var(--wf-accent-hover) !important;
+  }
+
+  .text-slate-100 {
+    color: var(--wf-text) !important;
+  }
+
+  .text-slate-200 {
+    color: var(--wf-text-2) !important;
+  }
+
+  .text-slate-300 {
+    color: var(--wf-text-3) !important;
+  }
+
+  .text-slate-400 {
+    color: var(--wf-muted-1) !important;
+  }
+
+  .text-slate-500 {
+    color: var(--wf-muted-2) !important;
+  }
+
+  .text-slate-600 {
+    color: var(--wf-muted-3) !important;
+  }
+
+  .animate-fade-up {
+    animation: fadeUp 0.25s ease both;
+  }
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .font-display {
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+}
