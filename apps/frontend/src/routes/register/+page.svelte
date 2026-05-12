@@ -63,7 +63,7 @@
           <Input id="register-email" type="email" bind:value={email} placeholder="you@example.com" />
         </div>
         <div>
-          <Label for="register-phone" class="mb-2 block">Phone (optional)</Label>
+          <Label for="register-phone" class="mb-2 block">Phone</Label>
           <Input id="register-phone" type="tel" bind:value={phoneNumber} placeholder="+1 555 123 4567" />
         </div>
       </div>
@@ -85,7 +85,7 @@
         <Button
           class="w-full"
           onclick={handleRequestCode}
-          disabled={!email || !name || !dateOfBirth || $authState.loading}
+          disabled={!email || !name || !dateOfBirth || !phoneNumber || $authState.loading}
         >
           {$authState.loading ? "Sending..." : "Send registration code"}
         </Button>

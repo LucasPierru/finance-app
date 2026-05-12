@@ -2,17 +2,7 @@
 
 <script lang="ts">
   import { page } from "$app/state";
-  import {
-    LayoutDashboard,
-    Wallet,
-    ReceiptText,
-    TrendingUp,
-    Menu,
-    X,
-    LineChart,
-    ArrowLeftRight,
-    Settings,
-  } from "lucide-svelte";
+  import { LayoutDashboard, TrendingUp, Menu, X, LineChart, ArrowLeftRight, Settings } from "lucide-svelte";
   import { goto } from "$app/navigation";
   import { authState, logout } from "$lib/stores/auth";
   import { Button } from "$lib/components/ui/button";
@@ -34,8 +24,6 @@
 
   const navItems = [
     { label: "Overview", path: "/", icon: LayoutDashboard },
-    { label: "Income", path: "/income", icon: Wallet },
-    { label: "Expenses", path: "/expenses", icon: ReceiptText },
     { label: "Projection", path: "/projection", icon: TrendingUp },
     { label: "Transactions", path: "/transactions", icon: ArrowLeftRight },
     { label: "Settings", path: "/settings", icon: Settings },
