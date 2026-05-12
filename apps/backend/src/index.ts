@@ -35,7 +35,7 @@ app.use("/api/finance", requireAuth, financeRouter);
 app.use("/api/plaid", requireAuth, plaidRouter);
 
 app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
-  console.error(`[${req.method} ${req.path}] Error:`, error.message);
+  console.error(`[${req.method} ${req.path}] Error:`, error);
   const statusCode = error instanceof AppError ? error.statusCode : 500;
   res.status(statusCode).json({ message: error.message || "Internal server error" });
 });

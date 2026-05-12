@@ -2,39 +2,53 @@
 
 <script lang="ts">
   import { page } from "$app/state";
-  import { onMount } from "svelte";
-  import { Chart, registerables, type Chart as ChartInstance } from "chart.js";
-  import SectionHeader from "$lib/components/SectionHeader.svelte";
-  import MetricCard from "$lib/components/MetricCard.svelte";
-  import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
-  import { theme } from "$lib/stores/theme";
+  import HomeTabs from "$lib/components/home/HomeTabs.svelte";
+  import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
+  import ExpenseTrendChart from "$lib/components/home/ExpenseTrendChart.svelte";
+  import ExpenseDonutSummary from "$lib/components/home/ExpenseDonutSummary.svelte";
+  import TransactionList from "$lib/components/home/TransactionList.svelte";
+  import { Card, CardContent } from "$lib/components/ui/card";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
 
-  // Register chart types once per module instead of dynamic importing on every render.
-  Chart.register(...registerables);
+  type HomeTab = "overview" | "expenses" | "transactions";
 
-  let monthExpenseCanvas: HTMLCanvasElement | undefined;
+  interface DisplayTransaction {
+    id: string;
+    dateValue: string;
+    dateLabel: string;
+    name: string;
+    merchant: string;
+    category: string;
+    amount: number;
+    flow: "income" | "expense";
+    source: "bank" | "manual";
+  }
 
-  let monthExpenseChart: ChartInstance | undefined;
-  let mounted = $state(false);
+  interface MonthlyTransactionGroup {
+    key: string;
+    label: string;
+    items: DisplayTransaction[];
+  }
+
+  const tabs: Array<{ id: HomeTab; label: string }> = [
+    { id: "overview", label: "Overview" },
+    { id: "expenses", label: "Expenses" },
+    { id: "transactions", label: "Transactions" },
+  ];
+
+  let activeTab = $state<HomeTab>("overview");
+  let selectedMonthKey = $state("");
+
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
   const financeView = $derived(getEffectiveFinanceView(financeState, bankState));
 
-  function cssHsl(variableName: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
-
-  function categoryPalette(index: number): string {
-    const vars = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
-    return cssHsl(vars[index % vars.length]);
-  }
-
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+  function formatCurrency(amount: number): string {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(amount);
   }
 
   function parseLocalCalendarDate(dateValue: string): Date | null {
@@ -50,195 +64,222 @@
     return date;
   }
 
-  function isCurrentMonth(dateValue: string): boolean {
-    const parsedDate = parseLocalCalendarDate(dateValue);
-    if (!parsedDate) return false;
-
-    const today = new Date();
-    return parsedDate.getFullYear() === today.getFullYear() && parsedDate.getMonth() === today.getMonth();
+  function getMonthKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
   }
 
-  const accountSummary = $derived.by(() => {
-    const accounts = bankState.accounts;
-    const bankAccounts = accounts.filter((account: (typeof accounts)[number]) => account.type === "depository");
-    const creditCards = accounts.filter((account: (typeof accounts)[number]) => account.type === "credit");
-    const loans = accounts.filter((account: (typeof accounts)[number]) => account.type === "loan");
-    const investments = accounts.filter((account: (typeof accounts)[number]) => account.type === "investment");
+  function formatMonthLabelFromKey(key: string): string {
+    const date = parseLocalCalendarDate(`${key}-01`);
+    if (!date) return "Current month";
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
 
-    const totalBalance = (list: typeof accounts) =>
-      list.reduce((sum: number, account: (typeof accounts)[number]) => sum + (account.currentBalance ?? 0), 0);
+  function formatDateLabel(dateValue: string): string {
+    const parsed = parseLocalCalendarDate(dateValue);
+    if (!parsed) return dateValue;
+    return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
 
-    return {
-      bank: { count: bankAccounts.length, total: totalBalance(bankAccounts) },
-      credit: { count: creditCards.length, total: totalBalance(creditCards) },
-      loans: { count: loans.length, total: totalBalance(loans) },
-      investments: { count: investments.length, total: totalBalance(investments) },
-    };
-  });
-
-  const currentMonthExpenseByCategory = $derived.by(() => {
-    const byCategory = new Map<string, number>();
-
-    for (const transaction of financeView.categorizedBankTransactions) {
-      if (transaction.flow !== "expense") continue;
-      if (!isCurrentMonth(transaction.date)) continue;
-
-      const category = transaction.resolvedCategory || "Other";
-      byCategory.set(category, (byCategory.get(category) ?? 0) + Math.abs(transaction.amount));
+  function buildSourceTransactions(): DisplayTransaction[] {
+    if (financeView.categorizedBankTransactions.length > 0) {
+      return financeView.categorizedBankTransactions
+        .map((tx) => ({
+          id: tx.transactionId,
+          dateValue: tx.date,
+          dateLabel: formatDateLabel(tx.date),
+          name: tx.name,
+          merchant: tx.merchantName ?? "-",
+          category: tx.resolvedCategory,
+          amount: Math.abs(tx.amount),
+          flow: tx.flow,
+          source: "bank" as const,
+        }))
+        .sort((a, b) => b.dateValue.localeCompare(a.dateValue));
     }
 
-    if (byCategory.size === 0) {
-      for (const expense of financeView.costs) {
-        const category = expense.category || "Other";
-        byCategory.set(category, (byCategory.get(category) ?? 0) + expense.amount);
+    const monthDate = new Date();
+    const currentMonthDateValue = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const manualCosts = financeView.costs.map((cost) => ({
+      id: `manual-expense-${cost.id}`,
+      dateValue: currentMonthDateValue,
+      dateLabel: "Manual month entry",
+      name: cost.name,
+      merchant: "Manual",
+      category: cost.category || "Other",
+      amount: Math.abs(cost.amount),
+      flow: "expense" as const,
+      source: "manual" as const,
+    }));
+
+    const manualRevenues = financeView.revenues.map((revenue) => ({
+      id: `manual-income-${revenue.id}`,
+      dateValue: currentMonthDateValue,
+      dateLabel: "Manual month entry",
+      name: revenue.name,
+      merchant: "Manual",
+      category: revenue.category || "Other",
+      amount: Math.abs(revenue.amount),
+      flow: "income" as const,
+      source: "manual" as const,
+    }));
+
+    return [...manualCosts, ...manualRevenues];
+  }
+
+  function groupTransactionsByMonth(items: DisplayTransaction[]): MonthlyTransactionGroup[] {
+    const groups = new Map<string, MonthlyTransactionGroup>();
+
+    for (const item of items) {
+      const parsed = parseLocalCalendarDate(item.dateValue);
+      if (!parsed) continue;
+
+      const key = getMonthKey(parsed);
+      const group = groups.get(key);
+      if (group) {
+        group.items.push(item);
+      } else {
+        groups.set(key, {
+          key,
+          label: parsed.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+          items: [item],
+        });
       }
     }
 
-    return [...byCategory.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return [...groups.values()].sort((a, b) => b.key.localeCompare(a.key));
+  }
+
+  const sourceTransactions = $derived(buildSourceTransactions());
+  const groupedByMonth = $derived(groupTransactionsByMonth(sourceTransactions));
+  const currentMonthKey = $derived(getMonthKey(new Date()));
+
+  const selectedMonthKeyOrCurrent = $derived(selectedMonthKey || currentMonthKey);
+  const selectedMonthItems = $derived(
+    groupedByMonth.find((group) => group.key === selectedMonthKeyOrCurrent)?.items ?? [],
+  );
+
+  const selectedMonthLabel = $derived(formatMonthLabelFromKey(selectedMonthKeyOrCurrent));
+
+  const currentMonthDailyExpenseTrend = $derived.by(() => {
+    const byDay = new Map<string, number>();
+
+    for (const item of sourceTransactions) {
+      if (item.flow !== "expense") continue;
+      const parsed = parseLocalCalendarDate(item.dateValue);
+      if (!parsed) continue;
+      if (getMonthKey(parsed) !== currentMonthKey) continue;
+
+      const key = item.dateValue;
+      byDay.set(key, (byDay.get(key) ?? 0) + Math.abs(item.amount));
+    }
+
+    const entries = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return {
+      labels: entries.map(([date]) => formatDateLabel(date)),
+      values: entries.map(([, amount]) => amount),
+    };
   });
 
   const currentMonthExpenseTotal = $derived(
-    currentMonthExpenseByCategory.reduce((sum: number, [, amount]: [string, number]) => sum + amount, 0),
+    currentMonthDailyExpenseTrend.values.reduce((sum, value) => sum + value, 0),
   );
 
-  function renderCurrentMonthExpenseChart() {
-    if (typeof window === "undefined" || !monthExpenseCanvas) return;
-    monthExpenseChart?.destroy();
-
-    const labels = currentMonthExpenseByCategory.map(([category]) => category);
-    const values = currentMonthExpenseByCategory.map(([, amount]) => amount);
-
-    const colors: string[] = [];
-
-    labels.forEach((_, index) => {
-      colors.push(categoryPalette(index));
-    });
-
-    if (values.length === 0) {
-      labels.push("No category data");
-      values.push(1);
-      colors.push(cssHsl("--muted"));
+  const selectedMonthExpenseBreakdown = $derived.by(() => {
+    const byCategory = new Map<string, number>();
+    for (const item of selectedMonthItems) {
+      if (item.flow !== "expense") continue;
+      byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + Math.abs(item.amount));
     }
 
-    monthExpenseChart = new Chart(monthExpenseCanvas, {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Expenses",
-            data: values,
-            backgroundColor: colors,
-            borderColor: cssHsl("--chart-4"),
-            borderWidth: 1,
-            borderRadius: 6,
-            maxBarThickness: 32,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.label}: ${fmt((ctx.raw as number) ?? 0)}`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              color: cssHsl("--muted-foreground"),
-              font: { family: "Plus Jakarta Sans", size: 11 },
-            },
-          },
-          y: {
-            grid: { color: cssHsl("--border", 0.6) },
-            ticks: {
-              color: cssHsl("--muted-foreground"),
-              callback: (value) => fmt(value as number),
-              font: { family: "Plus Jakarta Sans", size: 11 },
-            },
-          },
-        },
-      },
-    });
-  }
-
-  function renderCharts() {
-    renderCurrentMonthExpenseChart();
-  }
-
-  $effect(() => {
-    if (!mounted) return;
-    $theme;
-    renderCharts();
+    const entries = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+    return {
+      labels: entries.map(([category]) => category),
+      values: entries.map(([, amount]) => amount),
+      total: entries.reduce((sum, [, amount]) => sum + amount, 0),
+    };
   });
 
-  onMount(() => {
-    mounted = true;
-    renderCharts();
+  const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
 
-    return () => {
-      monthExpenseChart?.destroy();
-    };
+  $effect(() => {
+    if (!selectedMonthKey) {
+      selectedMonthKey = currentMonthKey;
+    }
   });
 </script>
 
-<div class="py-10">
+<div class="mx-auto w-full px-3 py-4 md:px-6 md:py-8">
   <div class="animate-fade-up">
-    <SectionHeader title="Overview" subtitle="Account summary and current month spending" />
-
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <MetricCard
-        label="Bank Accounts"
-        value={fmt(accountSummary.bank.total)}
-        hint={`${accountSummary.bank.count} account${accountSummary.bank.count !== 1 ? "s" : ""}`}
-        valueClass="text-[#5b8dee]"
-      />
-      <MetricCard
-        label="Credit Cards"
-        value={fmt(accountSummary.credit.total)}
-        hint={`${accountSummary.credit.count} card${accountSummary.credit.count !== 1 ? "s" : ""}`}
-        valueClass="text-rose-400"
-      />
-      <MetricCard
-        label="Loans"
-        value={fmt(accountSummary.loans.total)}
-        hint={`${accountSummary.loans.count} loan account${accountSummary.loans.count !== 1 ? "s" : ""}`}
-        valueClass="text-amber-400"
-      />
-      <MetricCard
-        label="Investments"
-        value={fmt(accountSummary.investments.total)}
-        hint={`${accountSummary.investments.count} investment account${accountSummary.investments.count !== 1 ? "s" : ""}`}
-        valueClass="text-emerald-400"
-      />
+    <div class="mb-6">
+      <h1 class="font-display text-3xl md:text-4xl font-semibold tracking-tight text-slate-100">Home</h1>
+      <p class="mt-1 text-sm text-slate-500">Dashboard for overview, expenses, and transactions.</p>
     </div>
 
-    <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <Card class="xl:col-span-2">
-        <CardHeader>
-          <CardTitle>Current Month Expenses</CardTitle>
-          <CardDescription>
-            {bankState.connected
-              ? "Based on synced transactions grouped by category."
-              : "No synced bank data. Using your manual expense entries."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div class="mb-4 rounded-md border border-[#252a3a] bg-[#13161e] px-4 py-3">
-            <p class="text-xs uppercase tracking-wider text-slate-500">Total this month</p>
-            <p class="mt-1 text-2xl font-display font-semibold text-rose-400">{fmt(currentMonthExpenseTotal)}</p>
-          </div>
-          <div class="h-[300px]">
-            <canvas bind:this={monthExpenseCanvas}></canvas>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <HomeTabs {tabs} bind:activeTab />
+
+    {#if activeTab === "overview"}
+      <div class="space-y-4 lg:space-y-6">
+        <div class="max-w-4xl">
+          <ExpenseTrendChart
+            labels={currentMonthDailyExpenseTrend.labels}
+            values={currentMonthDailyExpenseTrend.values}
+            totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
+          />
+        </div>
+
+        <div class="max-w-4xl">
+          <TransactionList
+            title="Recent Transactions"
+            subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
+            items={overviewRecentTransactions}
+            pageSize={3}
+            hidePager={true}
+          />
+        </div>
+      </div>
+    {/if}
+
+    {#if activeTab === "expenses"}
+      <div class="space-y-4 lg:space-y-6">
+        <div class="max-w-sm">
+          <MonthNavigation bind:value={selectedMonthKey} />
+        </div>
+        <div class="flex flex-col items-center lg:items-start">
+          <ExpenseDonutSummary
+            labels={selectedMonthExpenseBreakdown.labels}
+            values={selectedMonthExpenseBreakdown.values}
+            total={selectedMonthExpenseBreakdown.total}
+            monthLabel={selectedMonthLabel}
+          />
+        </div>
+      </div>
+    {/if}
+
+    {#if activeTab === "transactions"}
+      <div class="space-y-4 lg:space-y-6">
+        <div class="max-w-sm">
+          <MonthNavigation bind:value={selectedMonthKey} />
+        </div>
+        <div class="max-w-4xl">
+          <TransactionList
+            title="All Transactions"
+            subtitle={`${selectedMonthLabel} transactions (paginated).`}
+            items={selectedMonthItems}
+            pageSize={12}
+          />
+        </div>
+      </div>
+    {/if}
+
+    <Card class="mt-6 max-w-4xl">
+      <CardContent class="p-3">
+        <p class="text-xs text-slate-500">
+          Data source: {financeView.categorizedBankTransactions.length > 0
+            ? "Connected bank transactions"
+            : "Manual income/expense entries"}
+        </p>
+      </CardContent>
+    </Card>
   </div>
 </div>
