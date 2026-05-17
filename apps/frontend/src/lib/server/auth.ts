@@ -1,5 +1,4 @@
-import type { AuthUser } from "$lib/types/auth";
-import type { User } from "@finance-app/shared-types";
+import type { AuthUser, User } from "@finance-app/shared-types";
 import { fetchBackendResponse } from "$lib/server/backend";
 
 type BackendAuthUser = User;

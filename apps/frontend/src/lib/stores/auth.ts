@@ -1,7 +1,6 @@
 import { writable } from "svelte/store";
 import { apiRequest } from "$lib/api/client";
-import type { User } from "@finance-app/shared-types";
-import type { AuthUser, RegisterProfile } from "$lib/types/auth";
+import type { AuthUser, RegisterProfile, User } from "@finance-app/shared-types";
 
 type BackendAuthUser = User;
 

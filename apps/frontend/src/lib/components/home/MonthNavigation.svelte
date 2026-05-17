@@ -3,6 +3,7 @@
 <script lang="ts">
   import { ChevronLeft, ChevronRight } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
+  import { Card } from "../ui/card";
 
   let {
     value = $bindable<string>(),
@@ -85,9 +86,9 @@
   });
 </script>
 
-<div class="flex items-center justify-between gap-3">
+<Card class="flex items-center justify-between gap-3 grow w-full">
   <Button
-    variant="outline"
+    variant="ghost"
     size="sm"
     class="h-10 w-10 p-0"
     onclick={previousMonth}
@@ -102,7 +103,7 @@
   </div>
 
   <Button
-    variant="outline"
+    variant="ghost"
     size="sm"
     class="h-10 w-10 p-0"
     onclick={nextMonth}
@@ -111,4 +112,4 @@
   >
     <ChevronRight class="w-4 h-4" />
   </Button>
-</div>
+</Card>

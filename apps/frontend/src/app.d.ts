@@ -4,7 +4,7 @@ declare global {
       auth: {
         authenticated: boolean;
         accessToken: string | null;
-        user: import("$lib/types/auth").AuthUser | null;
+        user: import("@finance-app/shared-types").AuthUser | null;
       };
     }
   }

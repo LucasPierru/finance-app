@@ -1,6 +1,6 @@
 import { derived, writable } from "svelte/store";
 import { apiRequest } from "$lib/api/client";
-import type { BankConnectionState } from "$lib/types/banking";
+import type { BankConnectionState } from "@finance-app/shared-types";
 
 const initialState: BankConnectionState = {
   connected: false,

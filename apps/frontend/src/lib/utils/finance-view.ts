@@ -4,7 +4,7 @@ import type {
   InvestmentSettings,
   ProjectionPoint,
 } from "$lib/stores/finance";
-import type { BankConnectionState } from "$lib/types/banking";
+import type { BankConnectionState } from "@finance-app/shared-types";
 
 export interface CategorizedBankTransaction {
   transactionId: string;

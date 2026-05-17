@@ -1,4 +1,4 @@
-import type { BankConnectionState } from "$lib/types/banking";
+import type { BankConnectionState } from "@finance-app/shared-types";
 import type { FinanceStatePayload } from "$lib/stores/finance";
 import { fetchBackendJson } from "$lib/server/backend";
 

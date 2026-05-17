@@ -57,6 +57,10 @@ export const serverEnv = {
   plaidClientId: process.env.PLAID_CLIENT_ID?.trim() || "",
   plaidSecret: process.env.PLAID_SECRET?.trim() || "",
   plaidEnv: process.env.PLAID_ENV?.trim().toLowerCase() || "sandbox",
+  plaidTokenEncryptionSecret:
+    process.env.PLAID_TOKEN_ENCRYPTION_SECRET?.trim() ||
+    process.env.JWT_REFRESH_SECRET?.trim() ||
+    "dev-plaid-token-secret-change-me",
 };
 
 export function plaidCredentialsConfigured(): boolean {

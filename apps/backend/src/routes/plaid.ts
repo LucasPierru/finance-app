@@ -3,12 +3,12 @@ import { Products } from "plaid";
 import { assertPlaidConfigured, normalizePlaidCountryCode, plaidClient } from "@lib/plaid";
 import { getAuthenticatedUser } from "@middleware/auth";
 import type { BankAccount, BankTransaction, StoredBankState } from "@lib/types";
-import type { CreateLinkTokenBody, ExchangePublicTokenBody } from "@app-types/plaid";
+import type { CreateLinkTokenBody, ExchangePublicTokenBody } from "@finance-app/shared-types";
 import {
   clearStoredBankState,
   getBankConnectionState,
   getStoredBankState,
-  replaceStoredBankState,
+  upsertStoredBankState,
 } from "@repositories/plaid";
 
 const plaidRouter = Router();
@@ -76,10 +76,13 @@ async function fetchTransactions(accessToken: string): Promise<{ cursor: string 
   return { cursor, transactions };
 }
 
-async function syncTransactionsForState(state: StoredBankState): Promise<StoredBankState> {
+async function syncTransactionsForState(
+  state: StoredBankState,
+): Promise<{ nextState: StoredBankState; removedTransactionIds: string[] }> {
   let cursor = state.cursor;
   let hasMore = true;
   let nextTransactions = state.transactions;
+  const removedTransactionIds: string[] = [];
 
   while (hasMore) {
     const response = await plaidClient.transactionsSync({
@@ -91,6 +94,7 @@ async function syncTransactionsForState(state: StoredBankState): Promise<StoredB
     const added = response.data.added.map(mapTransaction);
     const modified = response.data.modified.map(mapTransaction);
     const removed = response.data.removed.map((entry) => entry.transaction_id);
+    removedTransactionIds.push(...removed);
 
     nextTransactions = upsertTransactions(nextTransactions, [...added, ...modified]);
     nextTransactions = removeTransactions(nextTransactions, removed);
@@ -104,11 +108,14 @@ async function syncTransactionsForState(state: StoredBankState): Promise<StoredB
   });
 
   return {
-    ...state,
-    cursor,
-    accounts: accountsResponse.data.accounts.map(mapAccount),
-    transactions: nextTransactions,
-    lastSyncAt: new Date().toISOString(),
+    removedTransactionIds,
+    nextState: {
+      ...state,
+      cursor,
+      accounts: accountsResponse.data.accounts.map(mapAccount),
+      transactions: nextTransactions,
+      lastSyncAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -174,7 +181,10 @@ plaidRouter.post("/exchange-public-token", async (req: Request<Record<string, st
       transactions,
     };
 
-    await replaceStoredBankState(getAuthenticatedUser(req).userId, state);
+    await upsertStoredBankState(getAuthenticatedUser(req).userId, state, {
+      pruneMissingAccounts: true,
+      pruneMissingTransactions: true,
+    });
 
     res.json({
       connected: true,
@@ -198,8 +208,11 @@ plaidRouter.post("/sync", async (req, res, next) => {
       return;
     }
 
-    const nextState = await syncTransactionsForState(state);
-    await replaceStoredBankState(getAuthenticatedUser(req).userId, nextState);
+    const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
+    await upsertStoredBankState(getAuthenticatedUser(req).userId, nextState, {
+      removedTransactionIds,
+      pruneMissingAccounts: true,
+    });
 
     res.json({
       connected: true,

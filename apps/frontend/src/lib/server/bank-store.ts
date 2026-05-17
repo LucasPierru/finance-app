@@ -1,4 +1,4 @@
-import type { BankAccount, BankTransaction } from "$lib/types/banking";
+import type { BankAccount, BankTransaction } from "@finance-app/shared-types";
 
 interface UserBankState {
   accessToken: string;

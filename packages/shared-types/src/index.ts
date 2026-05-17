@@ -98,3 +98,86 @@ export interface StoredBankState {
   accounts: BankAccount[];
   transactions: BankTransaction[];
 }
+
+export interface AuthUser {
+  id: User["id"];
+  email: User["email"];
+  name: string;
+  dateOfBirth: User["birthDate"];
+  phoneNumber: User["phone"];
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface RegisterProfile {
+  email: string;
+  name: string;
+  dateOfBirth: string;
+  phoneNumber: string;
+}
+
+export interface RegisterBody {
+  email?: string;
+  name?: string;
+  phone?: string;
+  birthDate?: string;
+}
+
+export interface RequestCodeBody {
+  email?: string;
+}
+
+export interface VerifyCodeBody {
+  email?: string;
+  code?: string;
+}
+
+export interface RefreshBody {
+  refreshToken?: string;
+}
+
+export interface LogoutBody {
+  refreshToken?: string;
+}
+
+export interface FinanceEntryItem {
+  id?: string;
+  name?: string;
+  categoryId?: string;
+  categoryName?: string;
+  amount?: number;
+  rawAmount?: string;
+  frequency?: FinanceFrequency;
+}
+
+export interface CreateCategoryBody {
+  type?: FinanceEntryType;
+  name?: string;
+}
+
+export interface CreateEntryBody {
+  type?: FinanceEntryType;
+  id?: string;
+  name?: string;
+  categoryId?: string;
+  categoryName?: string;
+  amount?: number;
+  rawAmount?: string;
+  frequency?: FinanceFrequency;
+}
+
+export type ReplaceEntriesBody = FinanceEntryItem[];
+
+export type UpdateSettingsBody = Partial<InvestmentSettings>;
+
+export interface CreateLinkTokenBody {
+  countryCode?: string;
+}
+
+export interface ExchangePublicTokenBody {
+  publicToken?: string;
+  institutionName?: string;
+}

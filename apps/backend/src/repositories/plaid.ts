@@ -1,4 +1,6 @@
 import { pool } from "@db/pool";
+import { serverEnv } from "@config/env";
+import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "@lib/plaid-token-crypto";
 import type { BankAccount, BankConnectionState, BankTransaction, StoredBankState } from "@lib/types";
 
 function mapAccountRow(row: Record<string, unknown>): BankAccount {
@@ -60,7 +62,7 @@ export async function getStoredBankState(userId: string): Promise<StoredBankStat
 
   const item = itemResult.rows[0];
   return {
-    accessToken: String(item.access_token),
+    accessToken: decryptPlaidAccessToken(String(item.access_token), serverEnv.plaidTokenEncryptionSecret),
     itemId: String(item.item_id),
     institutionName: item.institution_name ? String(item.institution_name) : null,
     cursor: item.cursor ? String(item.cursor) : null,
@@ -82,7 +84,21 @@ export async function getBankConnectionState(userId: string): Promise<BankConnec
   };
 }
 
-export async function replaceStoredBankState(userId: string, state: StoredBankState): Promise<void> {
+interface UpsertStoredBankStateOptions {
+  removedTransactionIds?: string[];
+  pruneMissingAccounts?: boolean;
+  pruneMissingTransactions?: boolean;
+}
+
+export async function upsertStoredBankState(
+  userId: string,
+  state: StoredBankState,
+  options: UpsertStoredBankStateOptions = {},
+): Promise<void> {
+  const encryptedAccessToken = encryptPlaidAccessToken(state.accessToken, serverEnv.plaidTokenEncryptionSecret);
+  const removedTransactionIds = options.removedTransactionIds ?? [];
+  const accountIds = state.accounts.map((account) => account.accountId);
+  const transactionIds = state.transactions.map((transaction) => transaction.transactionId);
   const client = await pool.connect();
 
   try {
@@ -97,11 +113,8 @@ export async function replaceStoredBankState(userId: string, state: StoredBankSt
          institution_name = EXCLUDED.institution_name,
          cursor = EXCLUDED.cursor,
          last_sync_at = EXCLUDED.last_sync_at`,
-      [userId, state.accessToken, state.itemId, state.institutionName, state.cursor, state.lastSyncAt],
+      [userId, encryptedAccessToken, state.itemId, state.institutionName, state.cursor, state.lastSyncAt],
     );
-
-    await client.query(`DELETE FROM plaid_accounts WHERE user_id = $1`, [userId]);
-    await client.query(`DELETE FROM plaid_transactions WHERE user_id = $1`, [userId]);
 
     for (const account of state.accounts) {
       await client.query(
@@ -116,7 +129,17 @@ export async function replaceStoredBankState(userId: string, state: StoredBankSt
           current_balance,
           available_balance,
           iso_currency_code
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (account_id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          name = EXCLUDED.name,
+          official_name = EXCLUDED.official_name,
+          mask = EXCLUDED.mask,
+          type = EXCLUDED.type,
+          subtype = EXCLUDED.subtype,
+          current_balance = EXCLUDED.current_balance,
+          available_balance = EXCLUDED.available_balance,
+          iso_currency_code = EXCLUDED.iso_currency_code`,
         [
           account.accountId,
           userId,
@@ -132,6 +155,19 @@ export async function replaceStoredBankState(userId: string, state: StoredBankSt
       );
     }
 
+    if (options.pruneMissingAccounts) {
+      if (accountIds.length === 0) {
+        await client.query(`DELETE FROM plaid_accounts WHERE user_id = $1`, [userId]);
+      } else {
+        await client.query(
+          `DELETE FROM plaid_accounts
+           WHERE user_id = $1
+             AND NOT (account_id = ANY($2::text[]))`,
+          [userId, accountIds],
+        );
+      }
+    }
+
     for (const transaction of state.transactions) {
       await client.query(
         `INSERT INTO plaid_transactions (
@@ -145,7 +181,17 @@ export async function replaceStoredBankState(userId: string, state: StoredBankSt
           iso_currency_code,
           category,
           pending
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+        ON CONFLICT (transaction_id) DO UPDATE SET
+          user_id = EXCLUDED.user_id,
+          account_id = EXCLUDED.account_id,
+          date = EXCLUDED.date,
+          name = EXCLUDED.name,
+          merchant_name = EXCLUDED.merchant_name,
+          amount = EXCLUDED.amount,
+          iso_currency_code = EXCLUDED.iso_currency_code,
+          category = EXCLUDED.category,
+          pending = EXCLUDED.pending`,
         [
           transaction.transactionId,
           userId,
@@ -159,6 +205,28 @@ export async function replaceStoredBankState(userId: string, state: StoredBankSt
           transaction.pending,
         ],
       );
+    }
+
+    if (removedTransactionIds.length > 0) {
+      await client.query(
+        `DELETE FROM plaid_transactions
+         WHERE user_id = $1
+           AND transaction_id = ANY($2::text[])`,
+        [userId, removedTransactionIds],
+      );
+    }
+
+    if (options.pruneMissingTransactions) {
+      if (transactionIds.length === 0) {
+        await client.query(`DELETE FROM plaid_transactions WHERE user_id = $1`, [userId]);
+      } else {
+        await client.query(
+          `DELETE FROM plaid_transactions
+           WHERE user_id = $1
+             AND NOT (transaction_id = ANY($2::text[]))`,
+          [userId, transactionIds],
+        );
+      }
     }
 
     await client.query("COMMIT");
@@ -186,3 +254,5 @@ export async function clearStoredBankState(userId: string): Promise<void> {
     client.release();
   }
 }
+
+export const replaceStoredBankState = upsertStoredBankState;

@@ -8,7 +8,7 @@ import type {
   RegisterBody,
   RequestCodeBody,
   VerifyCodeBody,
-} from "@app-types/auth";
+} from "@finance-app/shared-types";
 
 const authRouter = Router();
 

@@ -22,7 +22,7 @@ import type {
   CreateEntryBody,
   ReplaceEntriesBody,
   UpdateSettingsBody,
-} from "@app-types/finance";
+} from "@finance-app/shared-types";
 
 const financeRouter = Router();
 

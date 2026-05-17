@@ -200,6 +200,16 @@
     };
   });
 
+  const selectedMonthExpenseTransactionCount = $derived(
+    selectedMonthItems.filter((item) => item.flow === "expense").length,
+  );
+
+  const selectedMonthRevenueTotal = $derived(
+    selectedMonthItems.filter((item) => item.flow === "income").reduce((sum, item) => sum + item.amount, 0),
+  );
+
+  const selectedMonthDelta = $derived(selectedMonthRevenueTotal - selectedMonthExpenseBreakdown.total);
+
   const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
 
   $effect(() => {
@@ -207,79 +217,98 @@
       selectedMonthKey = currentMonthKey;
     }
   });
+
+  $effect(() => {
+    const tab = page.url.searchParams.get("tab");
+    const resolved: HomeTab = tab === "expenses" || tab === "transactions" ? tab : "overview";
+    if (activeTab !== resolved) {
+      activeTab = resolved;
+    }
+  });
 </script>
 
-<div class="mx-auto w-full px-3 py-4 md:px-6 md:py-8">
-  <div class="animate-fade-up">
-    <div class="mb-6">
-      <h1 class="font-display text-3xl md:text-4xl font-semibold tracking-tight text-slate-100">Home</h1>
-      <p class="mt-1 text-sm text-slate-500">Dashboard for overview, expenses, and transactions.</p>
-    </div>
-
+<div class="animate-fade-up">
+  <div class="hidden md:block">
     <HomeTabs {tabs} bind:activeTab />
-
-    {#if activeTab === "overview"}
-      <div class="space-y-4 lg:space-y-6">
-        <div class="max-w-4xl">
-          <ExpenseTrendChart
-            labels={currentMonthDailyExpenseTrend.labels}
-            values={currentMonthDailyExpenseTrend.values}
-            totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
-          />
-        </div>
-
-        <div class="max-w-4xl">
-          <TransactionList
-            title="Recent Transactions"
-            subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
-            items={overviewRecentTransactions}
-            pageSize={3}
-            hidePager={true}
-          />
-        </div>
-      </div>
-    {/if}
-
-    {#if activeTab === "expenses"}
-      <div class="space-y-4 lg:space-y-6">
-        <div class="max-w-sm">
-          <MonthNavigation bind:value={selectedMonthKey} />
-        </div>
-        <div class="flex flex-col items-center lg:items-start">
-          <ExpenseDonutSummary
-            labels={selectedMonthExpenseBreakdown.labels}
-            values={selectedMonthExpenseBreakdown.values}
-            total={selectedMonthExpenseBreakdown.total}
-            monthLabel={selectedMonthLabel}
-          />
-        </div>
-      </div>
-    {/if}
-
-    {#if activeTab === "transactions"}
-      <div class="space-y-4 lg:space-y-6">
-        <div class="max-w-sm">
-          <MonthNavigation bind:value={selectedMonthKey} />
-        </div>
-        <div class="max-w-4xl">
-          <TransactionList
-            title="All Transactions"
-            subtitle={`${selectedMonthLabel} transactions (paginated).`}
-            items={selectedMonthItems}
-            pageSize={12}
-          />
-        </div>
-      </div>
-    {/if}
-
-    <Card class="mt-6 max-w-4xl">
-      <CardContent class="p-3">
-        <p class="text-xs text-slate-500">
-          Data source: {financeView.categorizedBankTransactions.length > 0
-            ? "Connected bank transactions"
-            : "Manual income/expense entries"}
-        </p>
-      </CardContent>
-    </Card>
   </div>
+
+  {#if activeTab === "overview"}
+    <div class="space-y-4 lg:space-y-6">
+      <div class="max-w-4xl">
+        <ExpenseTrendChart
+          labels={currentMonthDailyExpenseTrend.labels}
+          values={currentMonthDailyExpenseTrend.values}
+          totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
+        />
+      </div>
+
+      <div class="max-w-4xl">
+        <TransactionList
+          title="Recent Transactions"
+          subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
+          items={overviewRecentTransactions}
+          pageSize={3}
+          hidePager={true}
+        />
+      </div>
+    </div>
+  {/if}
+
+  {#if activeTab === "expenses"}
+    <div class="space-y-4 lg:space-y-6">
+      <MonthNavigation bind:value={selectedMonthKey} />
+
+      <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
+        <div class="grid grid-cols-3">
+          <div class="flex flex-col items-center px-4 py-3">
+            <p class="mb-1 text-xs font-medium text-slate-500">Revenue</p>
+            <p class="text-base font-semibold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
+          </div>
+          <div class="flex flex-col items-center px-4 py-3">
+            <p class="mb-1 text-xs font-medium text-slate-500">Expenses</p>
+            <p class="text-base font-semibold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
+          </div>
+          <div class="flex flex-col items-center px-4 py-3">
+            <p class="mb-1 text-xs font-medium text-slate-500">Net</p>
+            <p class="text-base font-semibold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+              {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col items-center lg:items-start">
+        <ExpenseDonutSummary
+          labels={selectedMonthExpenseBreakdown.labels}
+          values={selectedMonthExpenseBreakdown.values}
+          total={selectedMonthExpenseBreakdown.total}
+          transactionCount={selectedMonthExpenseTransactionCount}
+        />
+      </div>
+    </div>
+  {/if}
+
+  {#if activeTab === "transactions"}
+    <div class="space-y-4 lg:space-y-6">
+      <MonthNavigation bind:value={selectedMonthKey} />
+      <div class="max-w-4xl">
+        <TransactionList
+          title="All Transactions"
+          subtitle={`${selectedMonthLabel} transactions (paginated).`}
+          items={selectedMonthItems}
+          pageSize={12}
+        />
+      </div>
+    </div>
+  {/if}
+
+  <Card class="mt-6 max-w-4xl">
+    <CardContent class="p-3">
+      <p class="text-xs text-slate-500">
+        Data source: {financeView.categorizedBankTransactions.length > 0
+          ? "Connected bank transactions"
+          : "Manual income/expense entries"}
+      </p>
+    </CardContent>
+  </Card>
 </div>
