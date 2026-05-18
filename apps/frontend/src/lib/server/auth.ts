@@ -5,7 +5,7 @@ type BackendAuthUser = User;
 
 export interface AuthSession {
   authenticated: boolean;
-  accessToken: null;
+  accessToken: string | null;
   user: AuthUser | null;
 }
 
@@ -13,6 +13,8 @@ export interface AuthSessionResolution {
   auth: AuthSession;
   setCookieHeaders: string[];
 }
+
+const ACCESS_TOKEN_COOKIE = "finance_access_token";
 
 function unauthenticated(): AuthSession {
   return {
@@ -102,10 +104,11 @@ export async function resolveAuthSession(cookieHeader: string | null): Promise<A
 
   const directUser = await fetchCurrentUser(cookieHeader);
   if (directUser) {
+    const accessToken = parseCookieHeader(cookieHeader).get(ACCESS_TOKEN_COOKIE) ?? null;
     return {
       auth: {
         authenticated: true,
-        accessToken: null,
+        accessToken,
         user: toAuthUser(directUser),
       },
       setCookieHeaders: [],
@@ -145,10 +148,11 @@ export async function resolveAuthSession(cookieHeader: string | null): Promise<A
     };
   }
 
+  const accessToken = existingCookies.get(ACCESS_TOKEN_COOKIE) ?? null;
   return {
     auth: {
       authenticated: true,
-      accessToken: null,
+      accessToken,
       user: toAuthUser(refreshedUser),
     },
     setCookieHeaders,

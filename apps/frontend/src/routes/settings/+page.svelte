@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/state";
   import { costs, investmentSettings, revenues } from "$lib/stores/finance.js";
   import {
     bankError,
@@ -143,6 +144,10 @@
     if (savedCountry && plaidCountryOptions.some((option) => option.value === savedCountry)) {
       selectedPlaidCountry = savedCountry;
     }
+
+    if (page.data.initialBankState) {
+      bankState.set(page.data.initialBankState);
+    }
   });
 
   function handlePlaidCountryChange(event: Event) {
@@ -281,7 +286,7 @@
 
       <div class="flex flex-wrap items-center gap-2">
         {#if !$bankState.connected}
-          <Button onclick={connectWithPlaid}>Connect Bank</Button>
+          <Button onclick={connectWithPlaid} disabled={$bankLoading}>Connect Bank</Button>
         {:else}
           <Button onclick={syncBankData} disabled={$bankLoading}>Sync Now</Button>
           <Button variant="outline" onclick={disconnectBank} disabled={$bankLoading}>Disconnect</Button>
@@ -290,7 +295,9 @@
 
       <p class="mt-3 text-sm text-slate-500">
         Status:
-        {#if $bankIsSynced}
+        {#if $bankLoading}
+          Loading...
+        {:else if $bankIsSynced}
           Connected{$bankState.institutionName ? ` (${$bankState.institutionName})` : ""}. Last sync: {fmtDate(
             $bankState.lastSyncAt,
           )}.

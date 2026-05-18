@@ -117,8 +117,8 @@ function splitEntries(entries: FinanceEntry[]): Pick<FinanceStatePayload, "reven
   return { revenues, costs };
 }
 
-export async function loadFinancePageData(cookieHeader: string | null) {
-  const headers = cookieHeader ? { cookie: cookieHeader } : undefined;
+export async function loadFinancePageData(accessToken: string | null) {
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
   const [stateResponse, initialBankState] = await Promise.all([
     fetchBackendJson<{

@@ -68,7 +68,10 @@
     return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
   }
 
-  function categoryPalette(index: number): string {
+  function categoryPalette(label: string, index: number): string {
+    if (label === "Other") {
+      return cssHsl("--muted-foreground", 0.5);
+    }
     const vars = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
     return cssHsl(vars[index % vars.length]);
   }
@@ -100,8 +103,8 @@
         datasets: [
           {
             data: safeValues,
-            backgroundColor: safeLabels.map((_, index) =>
-              hasExpenseData ? categoryPalette(index) : cssHsl("--muted", 0.65),
+            backgroundColor: safeLabels.map((label, index) =>
+              hasExpenseData ? categoryPalette(label, index) : cssHsl("--muted", 0.65),
             ),
             borderWidth: 0,
           },
@@ -162,7 +165,7 @@
   </CardHeader>
   <CardContent class="space-y-4">
     <div class="relative mx-auto h-64 w-64">
-      <canvas class="cursor-pointer" bind:this={canvas}></canvas>
+      <canvas class="relative z-10 cursor-pointer" bind:this={canvas}></canvas>
       <div
         class="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center text-center"
         style={`left: ${centerX}px; top: ${centerY}px;`}

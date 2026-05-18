@@ -262,6 +262,153 @@
           "amount": 117,
           "description": "Groceries",
           "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-01",
+          "date_posted": "2026-04-01",
+          "amount": -5200,
+          "description": "Payroll Deposit",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-02",
+          "date_posted": "2026-04-02",
+          "amount": 1450,
+          "description": "Rent",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-03",
+          "date_posted": "2026-04-03",
+          "amount": 95,
+          "description": "Electric Utility",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-05",
+          "date_posted": "2026-04-05",
+          "amount": 54,
+          "description": "Internet Service",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-07",
+          "date_posted": "2026-04-07",
+          "amount": 119,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-10",
+          "date_posted": "2026-04-10",
+          "amount": 42,
+          "description": "Phone Bill",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-12",
+          "date_posted": "2026-04-12",
+          "amount": 71,
+          "description": "Gas Station",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-14",
+          "date_posted": "2026-04-14",
+          "amount": 128,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-16",
+          "date_posted": "2026-04-16",
+          "amount": 28,
+          "description": "Gym Membership",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-21",
+          "date_posted": "2026-04-21",
+          "amount": 134,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-24",
+          "date_posted": "2026-04-24",
+          "amount": 210,
+          "description": "Car Insurance",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-28",
+          "date_posted": "2026-04-28",
+          "amount": 116,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-01",
+          "date_posted": "2026-05-01",
+          "amount": -5200,
+          "description": "Payroll Deposit",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-02",
+          "date_posted": "2026-05-02",
+          "amount": 1450,
+          "description": "Rent",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-03",
+          "date_posted": "2026-05-03",
+          "amount": 91,
+          "description": "Electric Utility",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-05",
+          "date_posted": "2026-05-05",
+          "amount": 54,
+          "description": "Internet Service",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-07",
+          "date_posted": "2026-05-07",
+          "amount": 123,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-10",
+          "date_posted": "2026-05-10",
+          "amount": 42,
+          "description": "Phone Bill",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-12",
+          "date_posted": "2026-05-12",
+          "amount": 68,
+          "description": "Gas Station",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-14",
+          "date_posted": "2026-05-14",
+          "amount": 129,
+          "description": "Groceries",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-16",
+          "date_posted": "2026-05-16",
+          "amount": 28,
+          "description": "Gym Membership",
+          "currency": "USD"
         }
       ]
     },
@@ -421,6 +568,90 @@
           "date_posted": "2026-03-28",
           "amount": 53,
           "description": "Restaurant",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-03",
+          "date_posted": "2026-04-03",
+          "amount": 37,
+          "description": "Coffee Shop",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-08",
+          "date_posted": "2026-04-08",
+          "amount": 19,
+          "description": "Streaming Subscription",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-11",
+          "date_posted": "2026-04-11",
+          "amount": 49,
+          "description": "Restaurant",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-15",
+          "date_posted": "2026-04-15",
+          "amount": 66,
+          "description": "Fuel",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-18",
+          "date_posted": "2026-04-18",
+          "amount": 14,
+          "description": "Music Subscription",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-23",
+          "date_posted": "2026-04-23",
+          "amount": 98,
+          "description": "Online Shopping",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-04-28",
+          "date_posted": "2026-04-28",
+          "amount": 54,
+          "description": "Restaurant",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-02",
+          "date_posted": "2026-05-02",
+          "amount": 40,
+          "description": "Coffee Shop",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-08",
+          "date_posted": "2026-05-08",
+          "amount": 19,
+          "description": "Streaming Subscription",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-11",
+          "date_posted": "2026-05-11",
+          "amount": 48,
+          "description": "Restaurant",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-14",
+          "date_posted": "2026-05-14",
+          "amount": 70,
+          "description": "Fuel",
+          "currency": "USD"
+        },
+        {
+          "date_transacted": "2026-05-18",
+          "date_posted": "2026-05-18",
+          "amount": 14,
+          "description": "Music Subscription",
           "currency": "USD"
         }
       ]

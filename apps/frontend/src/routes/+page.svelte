@@ -2,7 +2,6 @@
 
 <script lang="ts">
   import { page } from "$app/state";
-  import HomeTabs from "$lib/components/home/HomeTabs.svelte";
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
   import ExpenseTrendChart from "$lib/components/home/ExpenseTrendChart.svelte";
   import ExpenseDonutSummary from "$lib/components/home/ExpenseDonutSummary.svelte";
@@ -210,6 +209,46 @@
 
   const selectedMonthDelta = $derived(selectedMonthRevenueTotal - selectedMonthExpenseBreakdown.total);
 
+  const selectedMonthDailyExpenseTrend = $derived.by(() => {
+    const match = /^(\d{4})-(\d{2})$/.exec(selectedMonthKeyOrCurrent);
+    const daysCount = match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 31;
+    const days = new Array(daysCount).fill(0) as number[];
+    for (const item of selectedMonthItems) {
+      if (item.flow !== "expense") continue;
+      const parsed = parseLocalCalendarDate(item.dateValue);
+      if (!parsed) continue;
+      const idx = parsed.getDate() - 1;
+      if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+    }
+    return {
+      labels: Array.from({ length: daysCount }, (_, i) => String(i + 1)),
+      values: days,
+    };
+  });
+
+  const priorMonthKey = $derived.by(() => {
+    const match = /^(\d{4})-(\d{2})$/.exec(selectedMonthKeyOrCurrent);
+    if (!match) return "";
+    const d = new Date(Number(match[1]), Number(match[2]) - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const priorMonthItems = $derived(groupedByMonth.find((g) => g.key === priorMonthKey)?.items ?? []);
+
+  const priorMonthDailyExpenseValues = $derived.by(() => {
+    const match = /^(\d{4})-(\d{2})$/.exec(priorMonthKey);
+    const daysCount = match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 30;
+    const days = new Array(daysCount).fill(0) as number[];
+    for (const item of priorMonthItems) {
+      if (item.flow !== "expense") continue;
+      const parsed = parseLocalCalendarDate(item.dateValue);
+      if (!parsed) continue;
+      const idx = parsed.getDate() - 1;
+      if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+    }
+    return days;
+  });
+
   const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
 
   $effect(() => {
@@ -228,21 +267,15 @@
 </script>
 
 <div class="animate-fade-up">
-  <div class="hidden md:block">
-    <HomeTabs {tabs} bind:activeTab />
-  </div>
-
-  {#if activeTab === "overview"}
-    <div class="space-y-4 lg:space-y-6">
-      <div class="max-w-4xl">
+  <!-- Mobile: tab-driven via MobileInnerNav in layout -->
+  <div class="md:hidden">
+    {#if activeTab === "overview"}
+      <div class="space-y-4">
         <ExpenseTrendChart
           labels={currentMonthDailyExpenseTrend.labels}
           values={currentMonthDailyExpenseTrend.values}
           totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
         />
-      </div>
-
-      <div class="max-w-4xl">
         <TransactionList
           title="Recent Transactions"
           subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
@@ -251,33 +284,88 @@
           hidePager={true}
         />
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if activeTab === "expenses"}
-    <div class="space-y-4 lg:space-y-6">
-      <MonthNavigation bind:value={selectedMonthKey} />
-
-      <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
-        <div class="grid grid-cols-3">
-          <div class="flex flex-col items-center px-4 py-3">
-            <p class="mb-1 text-xs font-medium text-slate-500">Revenue</p>
-            <p class="text-base font-semibold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
-          </div>
-          <div class="flex flex-col items-center px-4 py-3">
-            <p class="mb-1 text-xs font-medium text-slate-500">Expenses</p>
-            <p class="text-base font-semibold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
-          </div>
-          <div class="flex flex-col items-center px-4 py-3">
-            <p class="mb-1 text-xs font-medium text-slate-500">Net</p>
-            <p class="text-base font-semibold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-              {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
-            </p>
+    {#if activeTab === "expenses"}
+      <div class="space-y-4">
+        <MonthNavigation bind:value={selectedMonthKey} />
+        <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
+          <div class="grid grid-cols-3">
+            <div class="flex flex-col items-center px-4 py-3">
+              <p class="mb-1 text-xs font-medium text-slate-500">Revenue</p>
+              <p class="text-base font-semibold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
+            </div>
+            <div class="flex flex-col items-center px-4 py-3">
+              <p class="mb-1 text-xs font-medium text-slate-500">Expenses</p>
+              <p class="text-base font-semibold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
+            </div>
+            <div class="flex flex-col items-center px-4 py-3">
+              <p class="mb-1 text-xs font-medium text-slate-500">Net</p>
+              <p class="text-base font-semibold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
+              </p>
+            </div>
           </div>
         </div>
+        <ExpenseDonutSummary
+          labels={selectedMonthExpenseBreakdown.labels}
+          values={selectedMonthExpenseBreakdown.values}
+          total={selectedMonthExpenseBreakdown.total}
+          transactionCount={selectedMonthExpenseTransactionCount}
+        />
       </div>
+    {/if}
 
-      <div class="flex flex-col items-center lg:items-start">
+    {#if activeTab === "transactions"}
+      <div class="space-y-4">
+        <MonthNavigation bind:value={selectedMonthKey} />
+        <TransactionList
+          title="All Transactions"
+          subtitle={`${selectedMonthLabel} transactions (paginated).`}
+          items={selectedMonthItems}
+          pageSize={12}
+        />
+      </div>
+    {/if}
+  </div>
+
+  <!-- Desktop: all sections shown directly -->
+  <div class="hidden md:flex md:flex-col gap-6">
+    <div class="flex items-center gap-4">
+      <div class="flex-1">
+        <MonthNavigation bind:value={selectedMonthKey} />
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
+      <div class="grid grid-cols-3 divide-x divide-[#2a3247]">
+        <div class="flex flex-col px-6 py-5">
+          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Revenue</p>
+          <p class="text-2xl font-bold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
+        </div>
+        <div class="flex flex-col px-6 py-5">
+          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Expenses</p>
+          <p class="text-2xl font-bold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
+        </div>
+        <div class="flex flex-col px-6 py-5">
+          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Net</p>
+          <p class="text-2xl font-bold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+            {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-5 gap-6">
+      <div class="col-span-3">
+        <ExpenseTrendChart
+          labels={selectedMonthDailyExpenseTrend.labels}
+          values={selectedMonthDailyExpenseTrend.values}
+          priorValues={priorMonthDailyExpenseValues}
+          totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthExpenseBreakdown.total)} spent`}
+        />
+      </div>
+      <div class="col-span-2">
         <ExpenseDonutSummary
           labels={selectedMonthExpenseBreakdown.labels}
           values={selectedMonthExpenseBreakdown.values}
@@ -286,29 +374,7 @@
         />
       </div>
     </div>
-  {/if}
 
-  {#if activeTab === "transactions"}
-    <div class="space-y-4 lg:space-y-6">
-      <MonthNavigation bind:value={selectedMonthKey} />
-      <div class="max-w-4xl">
-        <TransactionList
-          title="All Transactions"
-          subtitle={`${selectedMonthLabel} transactions (paginated).`}
-          items={selectedMonthItems}
-          pageSize={12}
-        />
-      </div>
-    </div>
-  {/if}
-
-  <Card class="mt-6 max-w-4xl">
-    <CardContent class="p-3">
-      <p class="text-xs text-slate-500">
-        Data source: {financeView.categorizedBankTransactions.length > 0
-          ? "Connected bank transactions"
-          : "Manual income/expense entries"}
-      </p>
-    </CardContent>
-  </Card>
+    <TransactionList title="Transactions" subtitle={selectedMonthLabel} items={selectedMonthItems} pageSize={12} />
+  </div>
 </div>
