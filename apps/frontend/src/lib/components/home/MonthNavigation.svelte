@@ -7,8 +7,10 @@
 
   let {
     value = $bindable<string>(),
+    onchange,
   }: {
     value?: string;
+    onchange?: (month: string) => void;
   } = $props();
 
   function parseMonthKey(key: string): { year: number; month: number } | null {
@@ -43,7 +45,9 @@
       month = 12;
       year -= 1;
     }
-    value = formatMonthKey(year, month);
+    const next = formatMonthKey(year, month);
+    if (onchange) onchange(next);
+    else value = next;
   }
 
   function nextMonth() {
@@ -67,7 +71,9 @@
       year = currentYear;
     }
 
-    value = formatMonthKey(year, month);
+    const next = formatMonthKey(year, month);
+    if (onchange) onchange(next);
+    else value = next;
   }
 
   const isAtCurrentMonth = $derived.by(() => {

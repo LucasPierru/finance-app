@@ -21,21 +21,55 @@
     items,
     pageSize = 10,
     hidePager = false,
+    serverPage,
+    serverTotalPages,
+    onPageChange,
   }: {
     title: string;
     subtitle: string;
     items: DisplayTransaction[];
     pageSize?: number;
     hidePager?: boolean;
+    serverPage?: number;
+    serverTotalPages?: number;
+    onPageChange?: (page: number) => void;
   } = $props();
 
   let page = $state(1);
 
-  const totalPages = $derived(Math.max(1, Math.ceil(items.length / pageSize)));
+  const isServerPaged = $derived(serverPage !== undefined && onPageChange !== undefined);
+  const totalPages = $derived(
+    isServerPaged ? (serverTotalPages ?? 1) : Math.max(1, Math.ceil(items.length / pageSize)),
+  );
+  const activePage = $derived(isServerPaged ? (serverPage ?? 1) : page);
 
   const pagedItems = $derived.by(() => {
+    if (isServerPaged) return items;
     const start = (page - 1) * pageSize;
     return items.slice(start, start + pageSize);
+  });
+
+  function nextPage() {
+    if (isServerPaged) {
+      if ((serverPage ?? 1) < (serverTotalPages ?? 1)) onPageChange?.((serverPage ?? 1) + 1);
+    } else {
+      if (page < totalPages) page += 1;
+    }
+  }
+
+  function previousPage() {
+    if (isServerPaged) {
+      if ((serverPage ?? 1) > 1) onPageChange?.((serverPage ?? 1) - 1);
+    } else {
+      if (page > 1) page -= 1;
+    }
+  }
+
+  $effect(() => {
+    items;
+    if (!isServerPaged && page > totalPages) {
+      page = 1;
+    }
   });
 
   function formatCurrency(amount: number): string {
@@ -45,21 +79,6 @@
       maximumFractionDigits: 2,
     }).format(amount);
   }
-
-  function nextPage() {
-    if (page < totalPages) page += 1;
-  }
-
-  function previousPage() {
-    if (page > 1) page -= 1;
-  }
-
-  $effect(() => {
-    items;
-    if (page > totalPages) {
-      page = 1;
-    }
-  });
 </script>
 
 <Card>
@@ -97,9 +116,9 @@
 
     {#if !hidePager && totalPages > 1}
       <div class="flex items-center justify-between pt-2">
-        <Button variant="outline" class="h-9" onclick={previousPage} disabled={page <= 1}>Previous</Button>
-        <p class="text-xs text-slate-500">Page {page} / {totalPages}</p>
-        <Button variant="outline" class="h-9" onclick={nextPage} disabled={page >= totalPages}>Next</Button>
+        <Button variant="outline" class="h-9" onclick={previousPage} disabled={activePage <= 1}>Previous</Button>
+        <p class="text-xs text-slate-500">Page {activePage} / {totalPages}</p>
+        <Button variant="outline" class="h-9" onclick={nextPage} disabled={activePage >= totalPages}>Next</Button>
       </div>
     {/if}
   </CardContent>

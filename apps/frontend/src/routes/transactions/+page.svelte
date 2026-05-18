@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import EntryFormCard from "$lib/components/EntryFormCard.svelte";
   import FinanceListCard from "$lib/components/FinanceListCard.svelte";
@@ -11,17 +12,15 @@
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
   import { apiRequest } from "$lib/api/client";
   import type { BankConnectionState } from "@finance-app/shared-types";
-  import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
-
-  type MonthlyTransactionGroup = {
-    key: string;
-    label: string;
-    items: ReturnType<typeof getEffectiveFinanceView>["categorizedBankTransactions"];
-  };
+  import {
+    emptyBankState,
+    emptyFinanceState,
+    getEffectiveFinanceView,
+    categorizeBankTransaction,
+  } from "$lib/utils/finance-view";
 
   type TransactionsViewMode = "transactions" | "recurring";
 
-  let selectedMonthKey = $state("");
   let viewMode = $state<TransactionsViewMode>("transactions");
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   let bankState = $state<BankConnectionState>(page.data.initialBankState ?? emptyBankState);
@@ -35,90 +34,55 @@
     ),
   );
 
+  const filters = $derived(
+    page.data.filters ?? { month: "", page: 1, flow: "", search: "", minAmount: "", maxAmount: "" },
+  );
+  const pagedTransactions = $derived(page.data.pagedTransactions ?? null);
+  const categorizedPagedTransactions = $derived((pagedTransactions?.transactions ?? []).map(categorizeBankTransaction));
+
   function fmt(n: number): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
   }
 
-  function getMonthKey(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-
-  function parseLocalCalendarDate(dateValue: string): Date | null {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue.trim());
-    if (!match) return null;
-
-    const year = Number(match[1]);
-    const monthIndex = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    const date = new Date(year, monthIndex, day);
-
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  }
-
-  const currentMonthKey = $derived(getMonthKey(new Date()));
-
-  function groupTransactionsByMonth() {
-    const groups = new Map<string, MonthlyTransactionGroup>();
-
-    for (const transaction of financeView.categorizedBankTransactions) {
-      const parsedDate = parseLocalCalendarDate(transaction.date);
-      if (!parsedDate) continue;
-      if (Number.isNaN(parsedDate.getTime())) continue;
-
-      const key = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}`;
-      const label = parsedDate.toLocaleString("en-US", { month: "long", year: "numeric" });
-      const existing = groups.get(key);
-
-      if (existing) {
-        existing.items.push(transaction);
+  function navigate(patch: Record<string, string | number>) {
+    const params = new URLSearchParams(page.url.searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === "" || value === null || value === undefined) {
+        params.delete(key);
       } else {
-        groups.set(key, {
-          key,
-          label,
-          items: [transaction],
-        });
+        params.set(key, String(value));
       }
     }
-
-    return [...groups.values()].sort((a, b) => b.key.localeCompare(a.key));
+    // Reset page to 1 when non-page param changes
+    if (!("page" in patch)) params.set("page", "1");
+    goto(`?${params}`, { replaceState: false, keepFocus: true });
   }
 
-  const syncedTransactionsByMonth = $derived(groupTransactionsByMonth());
+  function handleMonthChange(month: string) {
+    navigate({ month });
+  }
 
-  const monthFilterOptions = $derived([
-    ...syncedTransactionsByMonth.map((group) => ({ value: group.key, label: group.label })),
-  ]);
+  function handlePageChange(newPage: number) {
+    navigate({ page: newPage });
+  }
 
-  const selectedOrCurrentMonthKey = $derived(selectedMonthKey || currentMonthKey);
+  let searchInput = $state("");
+  // Keep search input in sync with URL (e.g. back/forward navigation)
+  $effect(() => {
+    searchInput = filters.search;
+  });
+  let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 
-  const selectedMonthGroup = $derived(
-    syncedTransactionsByMonth.find((group) => group.key === selectedOrCurrentMonthKey) ?? null,
-  );
-
-  const selectedMonthItems = $derived(selectedMonthGroup?.items ?? []);
-
-  const selectedMonthIncome = $derived(
-    selectedMonthItems
-      .filter((transaction) => transaction.flow === "income")
-      .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0),
-  );
-
-  const selectedMonthExpenses = $derived(
-    selectedMonthItems
-      .filter((transaction) => transaction.flow === "expense")
-      .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0),
-  );
-
-  const selectedMonthLabel = $derived(
-    monthFilterOptions.find((option) => option.value === selectedOrCurrentMonthKey)?.label ?? "Current Month",
-  );
+  function handleSearchInput(value: string) {
+    searchInput = value;
+    if (searchDebounce) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => navigate({ search: value }), 400);
+  }
 
   async function syncBankData() {
     const payload = await apiRequest<BankConnectionState>("/api/plaid/sync", {
       method: "POST",
     });
-
     bankState = {
       ...bankState,
       connected: true,
@@ -129,38 +93,32 @@
     };
   }
 
-  function handleMonthFilterChange(value: string) {
-    selectedMonthKey = value;
-  }
-
   onMount(() => {
     hydrateFinanceState(page.data.initialFinanceState);
-    selectedMonthKey = currentMonthKey;
+    searchInput = filters.search;
   });
 
   $effect(() => {
     const view = page.url.searchParams.get("view");
     const resolved: TransactionsViewMode = view === "recurring" ? "recurring" : "transactions";
-    if (viewMode !== resolved) {
-      viewMode = resolved;
-    }
+    if (viewMode !== resolved) viewMode = resolved;
   });
 </script>
 
 <div class="animate-fade-up">
-  <MonthNavigation bind:value={selectedMonthKey} />
+  <MonthNavigation value={filters.month} onchange={handleMonthChange} />
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 mb-5">
     <Card>
       <CardHeader class="pb-2">
-        <CardDescription>Income ({selectedMonthLabel})</CardDescription>
-        <CardTitle class="text-2xl text-emerald-400">{fmt(selectedMonthIncome)}</CardTitle>
+        <CardDescription>Income</CardDescription>
+        <CardTitle class="text-2xl text-emerald-400">{fmt(pagedTransactions?.summary.totalIncome ?? 0)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
-        <CardDescription>Expenses ({selectedMonthLabel})</CardDescription>
-        <CardTitle class="text-2xl text-rose-400">{fmt(selectedMonthExpenses)}</CardTitle>
+        <CardDescription>Expenses</CardDescription>
+        <CardTitle class="text-2xl text-rose-400">{fmt(pagedTransactions?.summary.totalExpenses ?? 0)}</CardTitle>
       </CardHeader>
     </Card>
   </div>
@@ -189,12 +147,22 @@
     synced={bankIsSynced}
     hasSyncedData={bankHasSyncedData}
     mode={viewMode}
-    {selectedMonthLabel}
-    transactions={selectedMonthItems}
+    selectedMonthLabel={filters.month}
+    transactions={categorizedPagedTransactions}
     recurringEntries={financeView.recurringBankEntries}
+    serverPage={pagedTransactions?.page ?? 1}
+    serverTotalPages={pagedTransactions?.totalPages ?? 1}
+    serverTotal={pagedTransactions?.total ?? 0}
+    filters={{ flow: filters.flow, search: searchInput, minAmount: filters.minAmount, maxAmount: filters.maxAmount }}
     onRefresh={syncBankData}
     onModeChange={(next) => {
       viewMode = next;
+      goto(`?${new URLSearchParams({ ...Object.fromEntries(page.url.searchParams), view: next })}`, {
+        replaceState: false,
+      });
     }}
+    onPageChange={handlePageChange}
+    onFilterChange={(patch) => navigate(patch)}
+    onSearchInput={handleSearchInput}
   />
 </div>

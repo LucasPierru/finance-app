@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS entry_categories (
+CREATE TABLE IF NOT EXISTS categories (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
   name TEXT NOT NULL,
@@ -22,12 +22,12 @@ CREATE TABLE IF NOT EXISTS entry_categories (
   UNIQUE (type, name)
 );
 
-CREATE TABLE IF NOT EXISTS entries (
+CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
   name TEXT NOT NULL,
-  category_id TEXT NOT NULL REFERENCES entry_categories(id) ON DELETE RESTRICT,
+  category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
   amount NUMERIC(14, 2) NOT NULL,
   raw_amount TEXT NOT NULL,
   frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'biweekly', 'monthly', 'yearly')),
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS entries (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS entries_user_type_idx ON entries(user_id, type);
+CREATE INDEX IF NOT EXISTS transactions_user_type_idx ON transactions(user_id, type);
 
 CREATE TABLE IF NOT EXISTS investment_settings (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -109,3 +109,16 @@ CREATE TABLE IF NOT EXISTS plaid_transactions (
 );
 
 CREATE INDEX IF NOT EXISTS plaid_transactions_user_date_idx ON plaid_transactions(user_id, date DESC);
+
+CREATE TABLE IF NOT EXISTS budgets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  amount NUMERIC(14, 2) NOT NULL,
+  period TEXT NOT NULL CHECK (period IN ('weekly', 'monthly', 'yearly')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS budgets_user_idx ON budgets(user_id);

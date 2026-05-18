@@ -4,13 +4,12 @@
   import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
   import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Select } from "$lib/components/ui/select";
+  import { SlidersHorizontal } from "lucide-svelte";
 
   type Mode = "transactions" | "recurring";
-
-  interface MonthOption {
-    value: string;
-    label: string;
-  }
 
   interface TransactionItem {
     transactionId: string;
@@ -35,6 +34,13 @@
     lastSeenDate: string;
   }
 
+  interface ActiveFilters {
+    flow: string;
+    search: string;
+    minAmount: string;
+    maxAmount: string;
+  }
+
   let {
     connected,
     synced,
@@ -43,8 +49,15 @@
     selectedMonthLabel,
     transactions,
     recurringEntries,
+    serverPage = 1,
+    serverTotalPages = 1,
+    serverTotal = 0,
+    filters = { flow: "", search: "", minAmount: "", maxAmount: "" },
     onRefresh,
     onModeChange,
+    onPageChange,
+    onFilterChange,
+    onSearchInput,
   }: {
     connected: boolean;
     synced: boolean;
@@ -53,43 +66,28 @@
     selectedMonthLabel: string;
     transactions: TransactionItem[];
     recurringEntries: RecurringEntry[];
+    serverPage?: number;
+    serverTotalPages?: number;
+    serverTotal?: number;
+    filters?: ActiveFilters;
     onRefresh: () => Promise<void> | void;
     onModeChange: (value: Mode) => void;
+    onPageChange?: (page: number) => void;
+    onFilterChange?: (patch: Record<string, string>) => void;
+    onSearchInput?: (value: string) => void;
   } = $props();
-  let page = $state(1);
 
-  const pageSize = 12;
-
-  const totalPages = $derived.by(() => {
-    const totalItems = mode === "transactions" ? transactions.length : recurringEntries.length;
-    return Math.max(1, Math.ceil(totalItems / pageSize));
-  });
-
-  const pagedTransactions = $derived.by(() => {
-    const start = (page - 1) * pageSize;
-    return transactions.slice(start, start + pageSize);
-  });
-
+  // Client-side pagination only used for recurring entries
+  let recurringPage = $state(1);
+  const recurringPageSize = 12;
+  const recurringTotalPages = $derived(Math.max(1, Math.ceil(recurringEntries.length / recurringPageSize)));
   const pagedRecurringEntries = $derived.by(() => {
-    const start = (page - 1) * pageSize;
-    return recurringEntries.slice(start, start + pageSize);
-  });
-
-  const canShowPagination = $derived.by(() => {
-    if (mode === "transactions") {
-      return connected && synced && hasSyncedData && transactions.length > pageSize;
-    }
-    return connected && synced && recurringEntries.length > pageSize;
+    const start = (recurringPage - 1) * recurringPageSize;
+    return recurringEntries.slice(start, start + recurringPageSize);
   });
 
   $effect(() => {
-    mode;
-    transactions.length;
-    recurringEntries.length;
-
-    if (page > totalPages) {
-      page = 1;
-    }
+    if (recurringPage > recurringTotalPages) recurringPage = 1;
   });
 
   function fmtCurrency(amount: number, currencyCode: string | null): string {
@@ -100,17 +98,20 @@
     }).format(amount);
   }
 
-  function nextPage() {
-    if (page < totalPages) page += 1;
-  }
-
-  function previousPage() {
-    if (page > 1) page -= 1;
-  }
-
   function switchMode(next: Mode) {
     onModeChange(next);
-    page = 1;
+    recurringPage = 1;
+  }
+
+  const hasActiveFilters = $derived(
+    filters.flow !== "" || filters.search !== "" || filters.minAmount !== "" || filters.maxAmount !== "",
+  );
+
+  let showFilters = $state(false);
+
+  function clearFilters() {
+    onFilterChange?.({ flow: "", search: "", minAmount: "", maxAmount: "" });
+    onSearchInput?.("");
   }
 </script>
 
@@ -124,7 +125,7 @@
             {#if !connected}
               Connect a bank account in Settings to unlock month-by-month transaction history.
             {:else}
-              Browsing {selectedMonthLabel} transactions.
+              {serverTotal} transaction{serverTotal === 1 ? "" : "s"} found.
             {/if}
           {:else}
             Likely weekly/biweekly/monthly/quarterly patterns from synced transactions.
@@ -141,6 +142,14 @@
         <Button variant={mode === "recurring" ? "default" : "outline"} size="sm" onclick={() => switchMode("recurring")}
           >Recurring</Button
         >
+        {#if connected && mode === "transactions" && hasSyncedData}
+          <Button variant={showFilters ? "default" : "outline"} size="sm" onclick={() => (showFilters = !showFilters)}>
+            <SlidersHorizontal class="mr-1.5 h-3.5 w-3.5" />
+            Filters{hasActiveFilters
+              ? ` (${[filters.flow, filters.search, filters.minAmount, filters.maxAmount].filter(Boolean).length})`
+              : ""}
+          </Button>
+        {/if}
         {#if connected}
           <Button variant="outline" size="sm" onclick={onRefresh}>Refresh</Button>
         {/if}
@@ -157,14 +166,68 @@
       {:else if !hasSyncedData}
         <p class="px-5 py-10 text-center text-sm text-slate-500">No synced transactions yet. Click refresh.</p>
       {:else}
-        <div class="space-y-4 px-5 pb-4">
+        <!-- Filter bar -->
+        {#if showFilters}
+          <div class="flex flex-wrap items-end gap-3 border-b border-[#252a3a] px-5 py-4">
+            <div class="flex min-w-0 flex-1 flex-col gap-1">
+              <Label class="text-xs text-slate-500">Search</Label>
+              <Input
+                class="h-8 text-sm"
+                placeholder="Name or merchant..."
+                value={filters.search}
+                oninput={(e) => onSearchInput?.((e.target as HTMLInputElement).value)}
+              />
+            </div>
+            <div class="flex flex-col gap-1">
+              <Label class="text-xs text-slate-500">Flow</Label>
+              <Select
+                class="h-8 w-28"
+                value={filters.flow}
+                onchange={(e) => onFilterChange?.({ flow: (e.target as HTMLSelectElement).value })}
+              >
+                <option value="">All</option>
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </Select>
+            </div>
+            <div class="flex flex-col gap-1">
+              <Label class="text-xs text-slate-500">Min $</Label>
+              <Input
+                class="h-8 w-24 text-sm"
+                type="number"
+                min="0"
+                placeholder="0"
+                value={filters.minAmount}
+                onchange={(e) => onFilterChange?.({ minAmount: (e.target as HTMLInputElement).value })}
+              />
+            </div>
+            <div class="flex flex-col gap-1">
+              <Label class="text-xs text-slate-500">Max $</Label>
+              <Input
+                class="h-8 w-24 text-sm"
+                type="number"
+                min="0"
+                placeholder="∞"
+                value={filters.maxAmount}
+                onchange={(e) => onFilterChange?.({ maxAmount: (e.target as HTMLInputElement).value })}
+              />
+            </div>
+            {#if hasActiveFilters}
+              <Button variant="ghost" size="sm" class="h-8 text-xs text-slate-400" onclick={clearFilters}>
+                Clear filters
+              </Button>
+            {/if}
+          </div>
+        {/if}
+
+        <div class="space-y-4 px-5 pb-4 pt-4">
           {#if transactions.length === 0}
             <p class="rounded-lg border border-[#252a3a] px-5 py-8 text-center text-sm text-slate-500">
-              No transactions for this month.
+              No transactions found.
             </p>
           {:else}
             <div class="space-y-3 md:hidden">
-              {#each pagedTransactions as tx (tx.transactionId)}
+              {#each transactions as tx (tx.transactionId)}
                 <article class="rounded-lg border border-[#252a3a] bg-[#13161e] p-3">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
@@ -204,7 +267,7 @@
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {#each pagedTransactions as tx (tx.transactionId)}
+                  {#each transactions as tx (tx.transactionId)}
                     <TableRow class="hover:bg-[#1c2030]">
                       <TableCell class="px-5 py-3 text-slate-400">{tx.date}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-200">{tx.name}</TableCell>
@@ -223,6 +286,24 @@
             </div>
           {/if}
         </div>
+
+        {#if serverTotalPages > 1}
+          <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={() => onPageChange?.(serverPage - 1)}
+              disabled={serverPage <= 1}>Previous</Button
+            >
+            <p class="text-xs text-slate-500">Page {serverPage} / {serverTotalPages}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={() => onPageChange?.(serverPage + 1)}
+              disabled={serverPage >= serverTotalPages}>Next</Button
+            >
+          </div>
+        {/if}
       {/if}
     {:else if !connected}
       <p class="px-5 py-8 text-center text-sm text-slate-500">No bank connected yet.</p>
@@ -290,14 +371,24 @@
           </TableBody>
         </Table>
       </div>
-    {/if}
 
-    {#if canShowPagination}
-      <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
-        <Button variant="outline" size="sm" onclick={previousPage} disabled={page <= 1}>Previous</Button>
-        <p class="text-xs text-slate-500">Page {page} / {totalPages}</p>
-        <Button variant="outline" size="sm" onclick={nextPage} disabled={page >= totalPages}>Next</Button>
-      </div>
+      {#if recurringTotalPages > 1}
+        <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (recurringPage = Math.max(1, recurringPage - 1))}
+            disabled={recurringPage <= 1}>Previous</Button
+          >
+          <p class="text-xs text-slate-500">Page {recurringPage} / {recurringTotalPages}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (recurringPage = Math.min(recurringTotalPages, recurringPage + 1))}
+            disabled={recurringPage >= recurringTotalPages}>Next</Button
+          >
+        </div>
+      {/if}
     {/if}
   </CardContent>
 </Card>

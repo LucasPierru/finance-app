@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-INSERT INTO entry_categories (id, type, name, keywords)
+INSERT INTO categories (id, type, name, keywords)
 VALUES
   (gen_random_uuid()::text, 'income', 'Salary', ARRAY['salary', 'wage', 'paycheck', 'pay']::text[]),
   (gen_random_uuid()::text, 'income', 'Freelance', ARRAY['freelance', 'gig', 'contract']::text[]),

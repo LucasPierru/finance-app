@@ -2,6 +2,9 @@ import { pool } from "@db/pool";
 import { serverEnv } from "@config/env";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "@lib/plaid-token-crypto";
 import type { BankAccount, BankConnectionState, BankTransaction, StoredBankState } from "@lib/types";
+import type { TransactionFilters, PagedTransactionsResult } from "@finance-app/shared-types";
+
+export type { TransactionFilters, PagedTransactionsResult };
 
 function mapAccountRow(row: Record<string, unknown>): BankAccount {
   return {
@@ -81,6 +84,85 @@ export async function getBankConnectionState(userId: string): Promise<BankConnec
     lastSyncAt: state?.lastSyncAt ?? null,
     accounts: state?.accounts ?? [],
     recentTransactions: state?.transactions.slice(0, 200) ?? [],
+  };
+}
+
+export async function getPagedTransactions(
+  userId: string,
+  filters: TransactionFilters,
+  page: number,
+  pageSize: number,
+): Promise<PagedTransactionsResult> {
+  const conditions: string[] = ["t.user_id = $1"];
+  const params: unknown[] = [userId];
+
+  if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
+    params.push(filters.month);
+    conditions.push(`TO_CHAR(t.date, 'YYYY-MM') = $${params.length}`);
+  }
+
+  if (filters.flow === "income") {
+    conditions.push("t.amount < 0");
+  } else if (filters.flow === "expense") {
+    conditions.push("t.amount > 0");
+  }
+
+  if (filters.search) {
+    params.push(`%${filters.search}%`);
+    conditions.push(`(t.name ILIKE $${params.length} OR t.merchant_name ILIKE $${params.length})`);
+  }
+
+  if (filters.minAmount !== undefined) {
+    params.push(filters.minAmount);
+    conditions.push(`ABS(t.amount) >= $${params.length}`);
+  }
+
+  if (filters.maxAmount !== undefined) {
+    params.push(filters.maxAmount);
+    conditions.push(`ABS(t.amount) <= $${params.length}`);
+  }
+
+  const where = conditions.join(" AND ");
+  const offset = (page - 1) * pageSize;
+
+  params.push(pageSize);
+  const limitParam = params.length;
+  params.push(offset);
+  const offsetParam = params.length;
+
+  const [countResult, dataResult, summaryResult] = await Promise.all([
+    pool.query(`SELECT COUNT(*) FROM plaid_transactions t WHERE ${where}`, params.slice(0, -2)),
+    pool.query(
+      `SELECT t.transaction_id, t.account_id, t.date, t.name, t.merchant_name, t.amount,
+              t.iso_currency_code, t.category, t.pending
+       FROM plaid_transactions t
+       WHERE ${where}
+       ORDER BY t.date DESC, t.transaction_id DESC
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      params,
+    ),
+    pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END), 0) AS total_income,
+         COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0)       AS total_expenses
+       FROM plaid_transactions t WHERE ${where}`,
+      params.slice(0, -2),
+    ),
+  ]);
+
+  const total = parseInt(countResult.rows[0].count as string, 10);
+  const summaryRow = summaryResult.rows[0];
+
+  return {
+    transactions: dataResult.rows.map(mapTransactionRow),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    summary: {
+      totalIncome: Number(summaryRow.total_income),
+      totalExpenses: Number(summaryRow.total_expenses),
+    },
   };
 }
 

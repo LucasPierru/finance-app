@@ -3,10 +3,11 @@ import { Products } from "plaid";
 import { assertPlaidConfigured, normalizePlaidCountryCode, plaidClient } from "@lib/plaid";
 import { getAuthenticatedUser } from "@middleware/auth";
 import type { BankAccount, BankTransaction, StoredBankState } from "@lib/types";
-import type { CreateLinkTokenBody, ExchangePublicTokenBody } from "@finance-app/shared-types";
+import type { CreateLinkTokenBody, ExchangePublicTokenBody, TransactionFilters } from "@finance-app/shared-types";
 import {
   clearStoredBankState,
   getBankConnectionState,
+  getPagedTransactions,
   getStoredBankState,
   upsertStoredBankState,
 } from "@repositories/plaid";
@@ -127,6 +128,41 @@ plaidRouter.get("/state", async (req, res, next) => {
     next(error);
   }
 });
+
+plaidRouter.get(
+  "/transactions",
+  async (
+    req: Request<Record<string, string>, object, object, Record<string, string>>,
+    res,
+    next,
+  ) => {
+    try {
+      const userId = getAuthenticatedUser(req).userId;
+      const { month, flow, search, minAmount, maxAmount, page: pageStr, pageSize: pageSizeStr } = req.query;
+
+      const page = Math.max(1, parseInt(pageStr ?? "1", 10) || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr ?? "20", 10) || 20));
+
+      const filters: TransactionFilters = {};
+      if (month && /^\d{4}-\d{2}$/.test(month)) filters.month = month;
+      if (flow === "income" || flow === "expense") filters.flow = flow;
+      if (search) filters.search = search.trim().slice(0, 200);
+      if (minAmount) {
+        const n = parseFloat(minAmount);
+        if (!Number.isNaN(n) && n >= 0) filters.minAmount = n;
+      }
+      if (maxAmount) {
+        const n = parseFloat(maxAmount);
+        if (!Number.isNaN(n) && n >= 0) filters.maxAmount = n;
+      }
+
+      const result = await getPagedTransactions(userId, filters, page, pageSize);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 plaidRouter.post("/link-token", async (req: Request<Record<string, string>, object, CreateLinkTokenBody>, res, next) => {
   try {

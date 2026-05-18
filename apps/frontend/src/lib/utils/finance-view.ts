@@ -169,6 +169,15 @@ function detectCadence(avgGapDays: number): RecurringBankEntry["cadence"] | null
   return null;
 }
 
+export function categorizeBankTransaction(transaction: BankConnectionState["recentTransactions"][number]): CategorizedBankTransaction {
+  return {
+    ...transaction,
+    resolvedCategory: resolveCategory(transaction),
+    flow: transaction.amount < 0 ? ("income" as const) : ("expense" as const),
+    merchantKey: normalizeMerchantKey(transaction),
+  };
+}
+
 export function getCategorizedBankTransactions(bankState: BankConnectionState): CategorizedBankTransaction[] {
   return bankState.recentTransactions
     .filter((transaction) => !transaction.pending)

@@ -2,12 +2,18 @@
 
 <script lang="ts">
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
   import ExpenseTrendChart from "$lib/components/home/ExpenseTrendChart.svelte";
   import ExpenseDonutSummary from "$lib/components/home/ExpenseDonutSummary.svelte";
   import TransactionList from "$lib/components/home/TransactionList.svelte";
   import { Card, CardContent } from "$lib/components/ui/card";
-  import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
+  import {
+    emptyBankState,
+    emptyFinanceState,
+    getEffectiveFinanceView,
+    categorizeBankTransaction,
+  } from "$lib/utils/finance-view";
 
   type HomeTab = "overview" | "expenses" | "transactions";
 
@@ -36,7 +42,6 @@
   ];
 
   let activeTab = $state<HomeTab>("overview");
-  let selectedMonthKey = $state("");
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
@@ -153,6 +158,7 @@
   const groupedByMonth = $derived(groupTransactionsByMonth(sourceTransactions));
   const currentMonthKey = $derived(getMonthKey(new Date()));
 
+  const selectedMonthKey = $derived(page.data.txMonth ?? currentMonthKey);
   const selectedMonthKeyOrCurrent = $derived(selectedMonthKey || currentMonthKey);
   const selectedMonthItems = $derived(
     groupedByMonth.find((group) => group.key === selectedMonthKeyOrCurrent)?.items ?? [],
@@ -251,11 +257,37 @@
 
   const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
 
-  $effect(() => {
-    if (!selectedMonthKey) {
-      selectedMonthKey = currentMonthKey;
-    }
+  const pagedDisplayTransactions = $derived.by(() => {
+    const data = page.data.pagedTransactions;
+    if (!data) return [];
+    return data.transactions.map((tx: import("@finance-app/shared-types").BankTransaction) => {
+      const cat = categorizeBankTransaction(tx);
+      return {
+        id: tx.transactionId,
+        dateValue: tx.date,
+        dateLabel: formatDateLabel(tx.date),
+        name: tx.name,
+        merchant: tx.merchantName ?? "-",
+        category: cat.resolvedCategory,
+        amount: Math.abs(tx.amount),
+        flow: cat.flow,
+        source: "bank" as const,
+      };
+    });
   });
+
+  function handleMonthChange(month: string) {
+    const params = new URLSearchParams(page.url.searchParams);
+    params.set("month", month);
+    params.delete("page");
+    goto(`?${params}`);
+  }
+
+  function handleTxPageChange(p: number) {
+    const params = new URLSearchParams(page.url.searchParams);
+    params.set("page", String(p));
+    goto(`?${params}`);
+  }
 
   $effect(() => {
     const tab = page.url.searchParams.get("tab");
@@ -288,7 +320,7 @@
 
     {#if activeTab === "expenses"}
       <div class="space-y-4">
-        <MonthNavigation bind:value={selectedMonthKey} />
+        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
         <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
           <div class="grid grid-cols-3">
             <div class="flex flex-col items-center px-4 py-3">
@@ -318,12 +350,15 @@
 
     {#if activeTab === "transactions"}
       <div class="space-y-4">
-        <MonthNavigation bind:value={selectedMonthKey} />
+        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
         <TransactionList
           title="All Transactions"
-          subtitle={`${selectedMonthLabel} transactions (paginated).`}
-          items={selectedMonthItems}
+          subtitle={`${selectedMonthLabel} — ${page.data.pagedTransactions?.total ?? 0} transaction${(page.data.pagedTransactions?.total ?? 0) === 1 ? "" : "s"}`}
+          items={pagedDisplayTransactions}
           pageSize={12}
+          serverPage={page.data.txPage}
+          serverTotalPages={page.data.pagedTransactions?.totalPages ?? 1}
+          onPageChange={handleTxPageChange}
         />
       </div>
     {/if}
@@ -333,7 +368,7 @@
   <div class="hidden md:flex md:flex-col gap-6">
     <div class="flex items-center gap-4">
       <div class="flex-1">
-        <MonthNavigation bind:value={selectedMonthKey} />
+        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
       </div>
     </div>
 
@@ -375,6 +410,14 @@
       </div>
     </div>
 
-    <TransactionList title="Transactions" subtitle={selectedMonthLabel} items={selectedMonthItems} pageSize={12} />
+    <TransactionList
+      title="Transactions"
+      subtitle={`${selectedMonthLabel} — ${page.data.pagedTransactions?.total ?? 0} transaction${(page.data.pagedTransactions?.total ?? 0) === 1 ? "" : "s"}`}
+      items={pagedDisplayTransactions}
+      pageSize={12}
+      serverPage={page.data.txPage}
+      serverTotalPages={page.data.pagedTransactions?.totalPages ?? 1}
+      onPageChange={handleTxPageChange}
+    />
   </div>
 </div>

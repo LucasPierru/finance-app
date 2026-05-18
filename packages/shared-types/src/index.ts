@@ -99,6 +99,26 @@ export interface StoredBankState {
   transactions: BankTransaction[];
 }
 
+export interface TransactionFilters {
+  month?: string;
+  flow?: "income" | "expense";
+  search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+}
+
+export interface PagedTransactionsResult {
+  transactions: BankTransaction[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  summary: {
+    totalIncome: number;
+    totalExpenses: number;
+  };
+}
+
 export interface AuthUser {
   id: User["id"];
   email: User["email"];
