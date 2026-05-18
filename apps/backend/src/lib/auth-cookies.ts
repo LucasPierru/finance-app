@@ -2,8 +2,8 @@ import type { Request, Response } from "express";
 import { serverEnv } from "@config/env";
 import type { User } from "@lib/types";
 
-const ACCESS_TOKEN_COOKIE = "finance_access_token";
-const REFRESH_TOKEN_COOKIE = "finance_refresh_token";
+const ACCESS_TOKEN_COOKIE = "access_token";
+const REFRESH_TOKEN_COOKIE = "refresh_token";
 
 interface AuthSessionCookies {
   user: User;

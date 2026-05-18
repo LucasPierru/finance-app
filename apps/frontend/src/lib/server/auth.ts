@@ -14,7 +14,7 @@ export interface AuthSessionResolution {
   setCookieHeaders: string[];
 }
 
-const ACCESS_TOKEN_COOKIE = "finance_access_token";
+const ACCESS_TOKEN_COOKIE = "access_token";
 
 function unauthenticated(): AuthSession {
   return {
