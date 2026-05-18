@@ -54,7 +54,7 @@
       <a
         href={item.path}
         class="flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors
-        {page.url.pathname === item.path
+        {(item.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.path))
           ? 'bg-[#1c2030] text-slate-100 border border-[#252a3a]'
           : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-100'}"
       >
@@ -80,7 +80,7 @@
       <a
         href={item.path}
         class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors
-        {page.url.pathname === item.path
+        {(item.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.path))
           ? 'bg-[#1c2030] text-slate-100 border border-[#252a3a]'
           : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-100'}"
       >

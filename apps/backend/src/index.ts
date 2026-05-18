@@ -5,6 +5,7 @@ import { pool } from "@db/pool";
 import { AppError } from "@lib/errors";
 import { requireAuth } from "@middleware/auth";
 import { authRouter } from "@routes/auth";
+import { budgetRouter } from "@routes/budget";
 import { financeRouter } from "@routes/finance";
 import { plaidRouter } from "@routes/plaid";
 
@@ -31,6 +32,7 @@ app.get("/health", async (_req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/budget", requireAuth, budgetRouter);
 app.use("/api/finance", requireAuth, financeRouter);
 app.use("/api/plaid", requireAuth, plaidRouter);
 

@@ -207,7 +207,7 @@ plaidRouter.post("/exchange-public-token", async (req: Request<Record<string, st
       plaidClient.accountsBalanceGet({ access_token: exchangeResponse.data.access_token }),
     ]);
 
-    const state: StoredBankState = {
+    let state: StoredBankState = {
       accessToken: exchangeResponse.data.access_token,
       itemId: exchangeResponse.data.item_id,
       institutionName,
@@ -217,7 +217,14 @@ plaidRouter.post("/exchange-public-token", async (req: Request<Record<string, st
       transactions,
     };
 
+    // Plaid delivers only recent transactions in the initial transactionsSync call.
+    // Historical data arrives in the very next cursor-based call, so we do one
+    // additional sync pass immediately to capture it.
+    const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
+    state = nextState;
+
     await upsertStoredBankState(getAuthenticatedUser(req).userId, state, {
+      removedTransactionIds,
       pruneMissingAccounts: true,
       pruneMissingTransactions: true,
     });

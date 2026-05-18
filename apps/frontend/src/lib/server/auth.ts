@@ -15,6 +15,15 @@ export interface AuthSessionResolution {
 }
 
 const ACCESS_TOKEN_COOKIE = "access_token";
+const REFRESH_TOKEN_COOKIE = "refresh_token";
+
+function expiredCookieHeaders(): string[] {
+  const expired = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; HttpOnly; SameSite=Lax";
+  return [
+    `${ACCESS_TOKEN_COOKIE}=; ${expired}`,
+    `${REFRESH_TOKEN_COOKIE}=; ${expired}`,
+  ];
+}
 
 function unauthenticated(): AuthSession {
   return {
@@ -125,7 +134,7 @@ export async function resolveAuthSession(cookieHeader: string | null): Promise<A
   if (!refreshResponse.ok) {
     return {
       auth: unauthenticated(),
-      setCookieHeaders: [],
+      setCookieHeaders: expiredCookieHeaders(),
     };
   }
 

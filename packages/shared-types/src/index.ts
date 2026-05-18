@@ -201,3 +201,54 @@ export interface ExchangePublicTokenBody {
   publicToken?: string;
   institutionName?: string;
 }
+
+export interface Budget {
+  id: string;
+  name: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  amount: number;
+  period: "weekly" | "monthly" | "yearly";
+}
+
+export interface CreateBudgetBody {
+  name?: string;
+  categoryId?: string | null;
+  amount?: number;
+  period?: "weekly" | "monthly" | "yearly";
+}
+
+export interface UpdateBudgetBody {
+  name?: string;
+  categoryId?: string | null;
+  amount?: number;
+  period?: "weekly" | "monthly" | "yearly";
+}
+
+export interface BudgetPlanItem {
+  id: string;
+  planId: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  amount: number;
+  period: "weekly" | "monthly" | "yearly";
+}
+
+export interface BudgetPlan {
+  id: string;
+  name: string;
+  items: BudgetPlanItem[];
+}
+
+export interface CreateBudgetPlanBody {
+  name?: string;
+  items?: Array<{
+    categoryId?: string | null;
+    amount?: number;
+    period?: "weekly" | "monthly" | "yearly";
+  }>;
+}
+
+export interface UpdateBudgetPlanBody {
+  name?: string;
+}

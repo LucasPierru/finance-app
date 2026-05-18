@@ -122,3 +122,26 @@ CREATE TABLE IF NOT EXISTS budgets (
 );
 
 CREATE INDEX IF NOT EXISTS budgets_user_idx ON budgets(user_id);
+
+CREATE TABLE IF NOT EXISTS budget_plans (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS budget_plans_user_idx ON budget_plans(user_id);
+
+CREATE TABLE IF NOT EXISTS budget_plan_items (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES budget_plans(id) ON DELETE CASCADE,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  category_name TEXT,
+  amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
+  period TEXT NOT NULL CHECK (period IN ('weekly', 'monthly', 'yearly')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS budget_plan_items_plan_idx ON budget_plan_items(plan_id);
