@@ -77,8 +77,20 @@ export interface BankTransaction {
   merchantName: string | null;
   amount: number;
   isoCurrencyCode: string | null;
+  /** Raw Plaid category array (empty for manual transactions) */
   category: string[];
   pending: boolean;
+  /** Effective flow direction — always set; user can override via PATCH */
+  flow: 'income' | 'expense';
+  /** User-selected category id (null = auto-detected) */
+  categoryId: string | null;
+  /** Resolved name for categoryId */
+  categoryName: string | null;
+}
+
+export interface UpdateTransactionBody {
+  categoryId?: string | null;
+  flow?: 'income' | 'expense';
 }
 
 export interface BankConnectionState {
@@ -251,4 +263,9 @@ export interface CreateBudgetPlanBody {
 
 export interface UpdateBudgetPlanBody {
   name?: string;
+  items?: Array<{
+    categoryId?: string | null;
+    amount?: number;
+    period?: "weekly" | "monthly" | "yearly";
+  }>;
 }

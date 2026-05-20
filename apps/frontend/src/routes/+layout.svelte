@@ -14,7 +14,7 @@
   let { children }: { children: Snippet } = $props();
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
-  const financeView = $derived(getEffectiveFinanceView(financeState, bankState));
+  const financeView = $derived(getEffectiveFinanceView(financeState, bankState, page.data.allCategories ?? []));
 
   const currentPathname = $derived(String(page.url.pathname));
   const isAuthRoute = $derived(currentPathname === "/login" || currentPathname === "/register");

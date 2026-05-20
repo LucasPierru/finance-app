@@ -17,6 +17,7 @@
     emptyFinanceState,
     getEffectiveFinanceView,
     categorizeBankTransaction,
+    type CategorizedBankTransaction,
   } from "$lib/utils/finance-view";
 
   type TransactionsViewMode = "transactions" | "recurring";
@@ -24,7 +25,8 @@
   let viewMode = $state<TransactionsViewMode>("transactions");
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   let bankState = $state<BankConnectionState>(page.data.initialBankState ?? emptyBankState);
-  const financeView = $derived(getEffectiveFinanceView(financeState, bankState));
+  const allCategories = $derived(page.data.allCategories ?? []);
+  const financeView = $derived(getEffectiveFinanceView(financeState, bankState, allCategories));
   const bankIsSynced = $derived(Boolean(bankState.connected && bankState.lastSyncAt));
   const bankHasSyncedData = $derived(
     Boolean(
@@ -38,7 +40,11 @@
     page.data.filters ?? { month: "", page: 1, flow: "", search: "", minAmount: "", maxAmount: "" },
   );
   const pagedTransactions = $derived(page.data.pagedTransactions ?? null);
-  const categorizedPagedTransactions = $derived((pagedTransactions?.transactions ?? []).map(categorizeBankTransaction));
+  const categorizedPagedTransactions = $derived(
+    ((pagedTransactions?.transactions ?? []) as import("@finance-app/shared-types").BankTransaction[]).map((tx) =>
+      categorizeBankTransaction(tx, allCategories),
+    ),
+  );
 
   function fmt(n: number): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
@@ -91,6 +97,11 @@
       accounts: payload.accounts,
       recentTransactions: payload.recentTransactions,
     };
+  }
+
+  function handleTransactionUpdated(_updated: { transactionId: string }) {
+    // Trigger a page reload to re-fetch paged transactions with the new category
+    goto(page.url, { replaceState: true, invalidateAll: true });
   }
 
   onMount(() => {
@@ -150,6 +161,7 @@
     selectedMonthLabel={filters.month}
     transactions={categorizedPagedTransactions}
     recurringEntries={financeView.recurringBankEntries}
+    categories={allCategories}
     serverPage={pagedTransactions?.page ?? 1}
     serverTotalPages={pagedTransactions?.totalPages ?? 1}
     serverTotal={pagedTransactions?.total ?? 0}
@@ -164,5 +176,6 @@
     onPageChange={handlePageChange}
     onFilterChange={(patch) => navigate(patch)}
     onSearchInput={handleSearchInput}
+    onTransactionUpdated={handleTransactionUpdated}
   />
 </div>

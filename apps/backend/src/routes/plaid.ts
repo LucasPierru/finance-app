@@ -3,12 +3,13 @@ import { Products } from "plaid";
 import { assertPlaidConfigured, normalizePlaidCountryCode, plaidClient } from "@lib/plaid";
 import { getAuthenticatedUser } from "@middleware/auth";
 import type { BankAccount, BankTransaction, StoredBankState } from "@lib/types";
-import type { CreateLinkTokenBody, ExchangePublicTokenBody, TransactionFilters } from "@finance-app/shared-types";
+import type { CreateLinkTokenBody, ExchangePublicTokenBody, TransactionFilters, UpdateTransactionBody } from "@finance-app/shared-types";
 import {
   clearStoredBankState,
   getBankConnectionState,
   getPagedTransactions,
   getStoredBankState,
+  updateTransactionOverride,
   upsertStoredBankState,
 } from "@repositories/plaid";
 
@@ -29,16 +30,21 @@ function mapAccount(account: any): BankAccount {
 }
 
 function mapTransaction(transaction: any): BankTransaction {
+  // Plaid sign convention: negative = credit/income, positive = debit/expense
+  const plaidAmount: number = transaction.amount;
   return {
     transactionId: transaction.transaction_id,
     accountId: transaction.account_id,
     date: transaction.date,
     name: transaction.name,
     merchantName: transaction.merchant_name,
-    amount: transaction.amount,
+    amount: Math.abs(plaidAmount),
     isoCurrencyCode: transaction.iso_currency_code,
     category: transaction.category ?? [],
     pending: transaction.pending,
+    flow: plaidAmount < 0 ? 'income' : 'expense',
+    categoryId: null,
+    categoryName: null,
   };
 }
 
@@ -158,6 +164,27 @@ plaidRouter.get(
 
       const result = await getPagedTransactions(userId, filters, page, pageSize);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+plaidRouter.patch(
+  "/transactions/:id",
+  async (req: Request<{ id: string }, object, UpdateTransactionBody>, res, next) => {
+    try {
+      const { userId } = getAuthenticatedUser(req);
+      const { id } = req.params;
+      const { categoryId, flow } = req.body;
+
+      if (flow !== undefined && flow !== "income" && flow !== "expense") {
+        res.status(400).json({ message: "flow must be 'income' or 'expense'" });
+        return;
+      }
+
+      const updated = await updateTransactionOverride(userId, id, categoryId, flow);
+      res.json(updated);
     } catch (error) {
       next(error);
     }

@@ -45,7 +45,7 @@ function mapFinanceItem(row: Record<string, unknown>): FinanceItem {
 function mapFinanceEntry(row: Record<string, unknown>): FinanceEntry {
   return {
     id: String(row.id),
-    type: row.type as FinanceEntryType,
+    type: row.flow as FinanceEntryType,
     name: String(row.name),
     categoryId: String(row.category_id),
     categoryName: String(row.category_name),
@@ -164,10 +164,10 @@ function mapSettings(row: Record<string, unknown> | undefined): InvestmentSettin
 export async function getFinanceState(userId: string): Promise<FinanceState> {
   const [entriesResult, settingsResult, categoriesResult] = await Promise.all([
     pool.query(
-      `SELECT e.id, e.type, e.name, e.category_id, c.name AS category_name, e.amount, e.raw_amount, e.frequency
+      `SELECT e.id, e.flow, e.name, e.category_id, c.name AS category_name, e.amount, e.raw_amount, e.frequency
        FROM transactions e
        JOIN categories c ON c.id = e.category_id
-       WHERE e.user_id = $1
+       WHERE e.user_id = $1 AND e.source = 'manual'
        ORDER BY e.created_at ASC`,
       [userId],
     ),
@@ -187,10 +187,10 @@ export async function getFinanceState(userId: string): Promise<FinanceState> {
   ]);
 
   const revenues = entriesResult.rows
-    .filter((row: { type: string }) => row.type === "income")
+    .filter((row: { flow: string }) => row.flow === "income")
     .map(mapFinanceItem);
   const costs = entriesResult.rows
-    .filter((row: { type: string }) => row.type === "expense")
+    .filter((row: { flow: string }) => row.flow === "expense")
     .map(mapFinanceItem);
 
   return {
@@ -203,11 +203,11 @@ export async function getFinanceState(userId: string): Promise<FinanceState> {
 
 export async function getFinanceEntries(userId: string, type?: FinanceEntryType): Promise<FinanceEntry[]> {
   const result = await pool.query(
-    `SELECT e.id, e.type, e.name, e.category_id, c.name AS category_name, e.amount, e.raw_amount, e.frequency
+    `SELECT e.id, e.flow, e.name, e.category_id, c.name AS category_name, e.amount, e.raw_amount, e.frequency
      FROM transactions e
      JOIN categories c ON c.id = e.category_id
-     WHERE e.user_id = $1
-       AND ($2::text IS NULL OR e.type = $2)
+     WHERE e.user_id = $1 AND e.source = 'manual'
+       AND ($2::text IS NULL OR e.flow = $2)
      ORDER BY e.created_at ASC`,
     [userId, type ?? null],
   );
@@ -286,8 +286,8 @@ export async function createFinanceEntry(
     );
 
     await client.query(
-      `INSERT INTO transactions (id, user_id, type, name, category_id, amount, raw_amount, frequency)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO transactions (id, user_id, source, flow, name, category_id, amount, raw_amount, frequency, date)
+       VALUES ($1, $2, 'manual', $3, $4, $5, $6, $7, $8, CURRENT_DATE)`,
       [entryId, userId, type, entry.name, category.id, entry.amount, entry.rawAmount, entry.frequency],
     );
 
@@ -319,7 +319,7 @@ export async function replaceFinanceEntries(
 
   try {
     await client.query("BEGIN");
-    await client.query(`DELETE FROM transactions WHERE user_id = $1 AND type = $2`, [userId, type]);
+    await client.query(`DELETE FROM transactions WHERE user_id = $1 AND source = 'manual' AND flow = $2`, [userId, type]);
 
     const categoryCache = new Map<string, FinanceCategory>();
     const savedEntries: FinanceItem[] = [];
@@ -328,8 +328,8 @@ export async function replaceFinanceEntries(
       const category = await resolveCategory(userId, type, entry, categoryCache, client);
 
       await client.query(
-        `INSERT INTO transactions (id, user_id, type, name, category_id, amount, raw_amount, frequency)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO transactions (id, user_id, source, flow, name, category_id, amount, raw_amount, frequency, date)
+         VALUES ($1, $2, 'manual', $3, $4, $5, $6, $7, $8, CURRENT_DATE)`,
         [entry.id, userId, type, entry.name, category.id, entry.amount, entry.rawAmount, entry.frequency],
       );
 

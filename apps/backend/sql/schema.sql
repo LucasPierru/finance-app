@@ -25,17 +25,27 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  source TEXT NOT NULL CHECK (source IN ('manual', 'plaid')),
+  flow TEXT NOT NULL CHECK (flow IN ('income', 'expense')),
   name TEXT NOT NULL,
-  category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-  amount NUMERIC(14, 2) NOT NULL,
-  raw_amount TEXT NOT NULL,
-  frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'biweekly', 'monthly', 'yearly')),
+  amount NUMERIC(14, 2) NOT NULL CHECK (amount >= 0),
+  date DATE NOT NULL,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  -- manual-specific (null for plaid)
+  raw_amount TEXT,
+  frequency TEXT CHECK (frequency IN ('weekly', 'biweekly', 'monthly', 'yearly')),
+  -- plaid-specific (null for manual)
+  account_id TEXT,
+  merchant_name TEXT,
+  iso_currency_code TEXT,
+  plaid_category JSONB NOT NULL DEFAULT '[]'::jsonb,
+  pending BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS transactions_user_type_idx ON transactions(user_id, type);
+CREATE INDEX IF NOT EXISTS transactions_user_source_idx ON transactions(user_id, source);
+CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions(user_id, date DESC);
 
 CREATE TABLE IF NOT EXISTS investment_settings (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -95,20 +105,7 @@ CREATE TABLE IF NOT EXISTS plaid_accounts (
 
 CREATE INDEX IF NOT EXISTS plaid_accounts_user_idx ON plaid_accounts(user_id);
 
-CREATE TABLE IF NOT EXISTS plaid_transactions (
-  transaction_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  account_id TEXT NOT NULL,
-  date DATE NOT NULL,
-  name TEXT NOT NULL,
-  merchant_name TEXT,
-  amount NUMERIC(14, 2) NOT NULL,
-  iso_currency_code TEXT,
-  category JSONB NOT NULL DEFAULT '[]'::jsonb,
-  pending BOOLEAN NOT NULL DEFAULT FALSE
-);
 
-CREATE INDEX IF NOT EXISTS plaid_transactions_user_date_idx ON plaid_transactions(user_id, date DESC);
 
 CREATE TABLE IF NOT EXISTS budgets (
   id TEXT PRIMARY KEY,

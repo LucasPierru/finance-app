@@ -1,7 +1,7 @@
 import type { PageServerLoad } from "./$types";
 import { loadFinancePageData } from "$lib/server/page-data";
 import { fetchBackendJson } from "$lib/server/backend";
-import type { PagedTransactionsResult } from "@finance-app/shared-types";
+import type { BudgetPlan, PagedTransactionsResult } from "@finance-app/shared-types";
 
 function currentMonthKey(): string {
   const now = new Date();
@@ -17,9 +17,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const txParams = new URLSearchParams({ month, page: String(page), pageSize: "12" });
 
-  const [financePageData, pagedTransactions] = await Promise.all([
+  const [financePageData, pagedTransactions, budgetPlans] = await Promise.all([
     loadFinancePageData(accessToken),
     fetchBackendJson<PagedTransactionsResult>(`/api/plaid/transactions?${txParams}`, { headers }),
+    fetchBackendJson<BudgetPlan[]>("/api/budget/plans", { headers }),
   ]);
 
   return {
@@ -27,5 +28,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     pagedTransactions: pagedTransactions ?? null,
     txMonth: month,
     txPage: page,
+    budgetPlans: Array.isArray(budgetPlans) ? budgetPlans : [],
   };
 };

@@ -7,7 +7,10 @@
   import ExpenseTrendChart from "$lib/components/home/ExpenseTrendChart.svelte";
   import ExpenseDonutSummary from "$lib/components/home/ExpenseDonutSummary.svelte";
   import TransactionList from "$lib/components/home/TransactionList.svelte";
-  import { Card, CardContent } from "$lib/components/ui/card";
+  import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
+  import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
+  import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
+  import { Button } from "$lib/components/ui/button";
   import {
     emptyBankState,
     emptyFinanceState,
@@ -45,7 +48,25 @@
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
-  const financeView = $derived(getEffectiveFinanceView(financeState, bankState));
+  const financeView = $derived(getEffectiveFinanceView(financeState, bankState, page.data.allCategories ?? []));
+  const budgetPlans = $derived(page.data.budgetPlans ?? []);
+
+  let budgetPlanId = $state<string | null>(null);
+  const budgetPlan = $derived(
+    budgetPlans.find((p: import("@finance-app/shared-types").BudgetPlan) => p.id === budgetPlanId) ??
+      budgetPlans[0] ??
+      null,
+  );
+
+  $effect(() => {
+    if (
+      budgetPlans.length > 0 &&
+      (budgetPlanId === null ||
+        !budgetPlans.find((p: import("@finance-app/shared-types").BudgetPlan) => p.id === budgetPlanId))
+    ) {
+      budgetPlanId = budgetPlans[0].id;
+    }
+  });
 
   function formatCurrency(amount: number): string {
     return new Intl.NumberFormat("en-US", {
@@ -308,6 +329,10 @@
           values={currentMonthDailyExpenseTrend.values}
           totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
         />
+        {#if budgetPlans.length > 0}
+          <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
+          <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
+        {/if}
         <TransactionList
           title="Recent Transactions"
           subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
@@ -365,14 +390,12 @@
   </div>
 
   <!-- Desktop: all sections shown directly -->
-  <div class="hidden md:flex md:flex-col gap-6">
-    <div class="flex items-center gap-4">
-      <div class="flex-1">
-        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
-      </div>
+  <div class="hidden md:grid md:grid-cols-5 md:gap-6">
+    <div class="col-span-5">
+      <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
     </div>
 
-    <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
+    <div class="col-span-5 rounded-xl border border-[#2a3247] bg-[#13161e]">
       <div class="grid grid-cols-3 divide-x divide-[#2a3247]">
         <div class="flex flex-col px-6 py-5">
           <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Revenue</p>
@@ -391,33 +414,112 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-5 gap-6">
-      <div class="col-span-3">
-        <ExpenseTrendChart
-          labels={selectedMonthDailyExpenseTrend.labels}
-          values={selectedMonthDailyExpenseTrend.values}
-          priorValues={priorMonthDailyExpenseValues}
-          totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthExpenseBreakdown.total)} spent`}
-        />
-      </div>
-      <div class="col-span-2">
-        <ExpenseDonutSummary
-          labels={selectedMonthExpenseBreakdown.labels}
-          values={selectedMonthExpenseBreakdown.values}
-          total={selectedMonthExpenseBreakdown.total}
-          transactionCount={selectedMonthExpenseTransactionCount}
-        />
-      </div>
+    <div class="col-span-3">
+      <ExpenseTrendChart
+        labels={selectedMonthDailyExpenseTrend.labels}
+        values={selectedMonthDailyExpenseTrend.values}
+        priorValues={priorMonthDailyExpenseValues}
+        totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthExpenseBreakdown.total)} spent`}
+      />
+    </div>
+    <div class="col-span-2">
+      <ExpenseDonutSummary
+        labels={selectedMonthExpenseBreakdown.labels}
+        values={selectedMonthExpenseBreakdown.values}
+        total={selectedMonthExpenseBreakdown.total}
+        transactionCount={selectedMonthExpenseTransactionCount}
+      />
     </div>
 
-    <TransactionList
-      title="Transactions"
-      subtitle={`${selectedMonthLabel} — ${page.data.pagedTransactions?.total ?? 0} transaction${(page.data.pagedTransactions?.total ?? 0) === 1 ? "" : "s"}`}
-      items={pagedDisplayTransactions}
-      pageSize={12}
-      serverPage={page.data.txPage}
-      serverTotalPages={page.data.pagedTransactions?.totalPages ?? 1}
-      onPageChange={handleTxPageChange}
-    />
+    {#if budgetPlans.length > 0}
+      {#if budgetPlans.length > 1}
+        <div class="col-span-5 flex flex-wrap gap-2">
+          {#each budgetPlans as plan (plan.id)}
+            <button
+              onclick={() => (budgetPlanId = plan.id)}
+              class="rounded-full px-3.5 py-1 text-sm font-medium transition-colors {budgetPlanId === plan.id
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}"
+            >
+              {plan.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
+      <div class="col-span-2">
+        <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
+      </div>
+      <div class="col-span-3">
+        <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
+      </div>
+    {/if}
+
+    <!-- Desktop transactions table -->
+    <Card class="col-span-5">
+      <CardHeader>
+        <CardTitle class="font-display text-xl">Transactions</CardTitle>
+        <CardDescription>
+          {selectedMonthLabel} — {page.data.pagedTransactions?.total ?? 0} transaction{(page.data.pagedTransactions
+            ?.total ?? 0) === 1
+            ? ""
+            : "s"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="p-0">
+        {#if pagedDisplayTransactions.length === 0}
+          <p class="px-6 py-10 text-center text-sm text-slate-500">No transactions for this period.</p>
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="border-y border-[#252a3a] bg-[#1c2030]">
+                <tr>
+                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Date</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Name</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Merchant</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Category</th>
+                  <th class="px-5 py-3 text-right text-xs font-medium text-slate-400">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each pagedDisplayTransactions as tx (tx.id)}
+                  <tr class="border-b border-[#252a3a] transition-colors hover:bg-[#1c2030]">
+                    <td class="px-5 py-3 text-slate-400">{tx.dateLabel}</td>
+                    <td class="px-5 py-3 font-medium text-slate-200">{tx.name}</td>
+                    <td class="px-5 py-3 text-slate-400">{tx.merchant}</td>
+                    <td class="px-5 py-3 text-slate-400">{tx.category}</td>
+                    <td
+                      class="px-5 py-3 text-right font-semibold {tx.flow === 'income'
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'}"
+                    >
+                      {tx.flow === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          {#if (page.data.pagedTransactions?.totalPages ?? 1) > 1}
+            <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={() => handleTxPageChange(page.data.txPage - 1)}
+                disabled={page.data.txPage <= 1}>Previous</Button
+              >
+              <p class="text-xs text-slate-500">
+                Page {page.data.txPage} / {page.data.pagedTransactions?.totalPages ?? 1}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={() => handleTxPageChange(page.data.txPage + 1)}
+                disabled={page.data.txPage >= (page.data.pagedTransactions?.totalPages ?? 1)}>Next</Button
+              >
+            </div>
+          {/if}
+        {/if}
+      </CardContent>
+    </Card>
   </div>
 </div>

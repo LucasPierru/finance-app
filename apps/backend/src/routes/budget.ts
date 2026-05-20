@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { getAuthenticatedUser } from "@middleware/auth";
 import { createBudget, deleteBudget, getBudgets, updateBudget } from "@repositories/budget";
-import { createBudgetPlan, deleteBudgetPlan, getBudgetPlans } from "@repositories/budget-plan";
+import { createBudgetPlan, deleteBudgetPlan, getBudgetPlans, updateBudgetPlan } from "@repositories/budget-plan";
 import type { Budget, BudgetPlan, CreateBudgetBody, CreateBudgetPlanBody, UpdateBudgetBody } from "@lib/types";
 import { AppError } from "@lib/errors";
 
@@ -145,6 +145,42 @@ budgetRouter.post(
 
       const plan = await createBudgetPlan(userId, name.trim(), validatedItems);
       res.status(201).json(plan);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+budgetRouter.put(
+  "/plans/:id",
+  async (req: Request<{ id: string }, object, UpdateBudgetPlanBody>, res, next) => {
+    try {
+      const { userId } = getAuthenticatedUser(req);
+      const { id } = req.params;
+      const { name, items } = req.body;
+
+      if (!name || typeof name !== "string" || !name.trim()) {
+        throw new AppError(400, "Budget plan name is required");
+      }
+
+      if (!Array.isArray(items) || items.length === 0) {
+        throw new AppError(400, "At least one item is required");
+      }
+
+      const validatedItems = items.map((item, i) => {
+        const amount = Number(item.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          throw new AppError(400, `Item ${i + 1}: amount must be a positive number`);
+        }
+        const period = item.period;
+        if (period !== "weekly" && period !== "monthly" && period !== "yearly") {
+          throw new AppError(400, `Item ${i + 1}: period must be weekly, monthly, or yearly`);
+        }
+        return { categoryId: item.categoryId ?? null, amount, period };
+      });
+
+      const plan = await updateBudgetPlan(userId, id, name.trim(), validatedItems);
+      res.json(plan);
     } catch (error) {
       next(error);
     }

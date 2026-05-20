@@ -106,6 +106,68 @@ export async function createBudgetPlan(
   }
 }
 
+export async function updateBudgetPlan(
+  userId: string,
+  planId: string,
+  name: string,
+  items: Array<{ categoryId: string | null; amount: number; period: BudgetPlanItem["period"] }>,
+): Promise<BudgetPlan> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const planResult = await client.query(
+      `UPDATE budget_plans SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING id, name`,
+      [name, planId, userId],
+    );
+    if ((planResult.rowCount ?? 0) === 0) {
+      throw new AppError(404, "Budget plan not found");
+    }
+
+    await client.query(`DELETE FROM budget_plan_items WHERE plan_id = $1`, [planId]);
+
+    const createdItems: BudgetPlanItem[] = [];
+    for (const item of items) {
+      const itemId = randomUUID();
+
+      let categoryName: string | null = null;
+      if (item.categoryId) {
+        const catResult = await client.query(
+          `SELECT name FROM categories WHERE id = $1 AND type = 'expense'`,
+          [item.categoryId],
+        );
+        if ((catResult.rowCount ?? 0) === 0) {
+          throw new AppError(400, "Category not found or not an expense category");
+        }
+        categoryName = String(catResult.rows[0].name);
+      }
+
+      await client.query(
+        `INSERT INTO budget_plan_items (id, plan_id, category_id, category_name, amount, period)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [itemId, planId, item.categoryId ?? null, categoryName, item.amount, item.period],
+      );
+
+      createdItems.push({
+        id: itemId,
+        planId,
+        categoryId: item.categoryId,
+        categoryName,
+        amount: item.amount,
+        period: item.period,
+      });
+    }
+
+    await client.query("COMMIT");
+    return { id: planId, name, items: createdItems };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteBudgetPlan(userId: string, planId: string): Promise<void> {
   const result = await pool.query(
     `DELETE FROM budget_plans WHERE id = $1 AND user_id = $2`,

@@ -4,7 +4,9 @@ import type {
   InvestmentSettings,
   ProjectionPoint,
 } from "$lib/stores/finance";
-import type { BankConnectionState } from "@finance-app/shared-types";
+import type { BankConnectionState, BankTransaction, FinanceCategory } from "@finance-app/shared-types";
+
+export type { FinanceCategory };
 
 export interface CategorizedBankTransaction {
   transactionId: string;
@@ -16,8 +18,11 @@ export interface CategorizedBankTransaction {
   isoCurrencyCode: string | null;
   category: string[];
   pending: boolean;
-  resolvedCategory: string;
   flow: "income" | "expense";
+  categoryId: string | null;
+  categoryName: string | null;
+  resolvedCategory: string;
+  resolvedCategoryId: string | null;
   merchantKey: string;
 }
 
@@ -102,25 +107,49 @@ const categoryKeywordMap: Array<{ category: string; keywords: string[] }> = [
   { category: "Benefits", keywords: ["benefit", "refund", "rebate"] },
 ];
 
-function normalizeMerchantKey(transaction: BankConnectionState["recentTransactions"][number]): string {
+function normalizeMerchantKey(transaction: BankTransaction): string {
   return (transaction.merchantName || transaction.name || "Unknown")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
 
-function resolveCategory(transaction: BankConnectionState["recentTransactions"][number]): string {
+function resolveCategoryFromDb(
+  transaction: BankTransaction,
+  categories: FinanceCategory[],
+): { name: string; id: string | null } {
+  // User override takes priority
+  if (transaction.categoryId && transaction.categoryName) {
+    return { name: transaction.categoryName, id: transaction.categoryId };
+  }
+
+  const flow = transaction.flow;
+  const haystack = `${transaction.name} ${transaction.merchantName ?? ""} ${(transaction.category ?? []).join(" ")}`.toLowerCase();
+
+  const matchedCat = categories
+    .filter((c) => c.type === flow)
+    .find((c) => c.keywords.some((kw) => haystack.includes(kw.toLowerCase())));
+
+  if (matchedCat) return { name: matchedCat.name, id: matchedCat.id };
+
+  // Fall back to Plaid category array
+  if (transaction.category.length > 0 && transaction.category[0]) {
+    return { name: transaction.category[0], id: null };
+  }
+
+  return { name: flow === "income" ? "Income" : "Expense", id: null };
+}
+
+// Legacy resolver used when no DB categories available
+function resolveCategory(transaction: BankTransaction): string {
+  if (transaction.categoryName) return transaction.categoryName;
   if (transaction.category.length > 0 && transaction.category[0]) {
     return transaction.category[0];
   }
-
   const haystack = `${transaction.name} ${transaction.merchantName ?? ""}`.toLowerCase();
   const matched = categoryKeywordMap.find((entry) => entry.keywords.some((keyword) => haystack.includes(keyword)));
-  if (matched) {
-    return matched.category;
-  }
-
-  return transaction.amount < 0 ? "Income" : "Expense";
+  if (matched) return matched.category;
+  return transaction.flow === "income" ? "Income" : "Expense";
 }
 
 function isRecentTransaction(dateValue: string): boolean {
@@ -133,12 +162,20 @@ function isRecentTransaction(dateValue: string): boolean {
   return ageInDays >= 0 && ageInDays <= 30;
 }
 
-function normalizeIncomeCategory(category: string): string {
+function normalizeIncomeCategory(category: string, categories: FinanceCategory[]): string {
+  if (categories.length > 0) {
+    const matched = categories.find((c) => c.type === "income" && c.name === category);
+    return matched ? matched.name : "Other";
+  }
   const value = category.trim();
   return incomeCategories.has(value) ? value : "Other";
 }
 
-function normalizeExpenseCategory(category: string): string {
+function normalizeExpenseCategory(category: string, categories: FinanceCategory[]): string {
+  if (categories.length > 0) {
+    const matched = categories.find((c) => c.type === "expense" && c.name === category);
+    return matched ? matched.name : "Other";
+  }
   const value = category.trim();
   return expenseCategories.has(value) ? value : "Other";
 }
@@ -169,24 +206,31 @@ function detectCadence(avgGapDays: number): RecurringBankEntry["cadence"] | null
   return null;
 }
 
-export function categorizeBankTransaction(transaction: BankConnectionState["recentTransactions"][number]): CategorizedBankTransaction {
+export function categorizeBankTransaction(
+  transaction: BankTransaction,
+  categories: FinanceCategory[] = [],
+): CategorizedBankTransaction {
+  const flow = transaction.flow;
+  const { name: resolvedCategory, id: resolvedCategoryId } =
+    categories.length > 0
+      ? resolveCategoryFromDb(transaction, categories)
+      : { name: resolveCategory(transaction), id: null };
   return {
     ...transaction,
-    resolvedCategory: resolveCategory(transaction),
-    flow: transaction.amount < 0 ? ("income" as const) : ("expense" as const),
+    resolvedCategory,
+    resolvedCategoryId,
+    flow,
     merchantKey: normalizeMerchantKey(transaction),
   };
 }
 
-export function getCategorizedBankTransactions(bankState: BankConnectionState): CategorizedBankTransaction[] {
+export function getCategorizedBankTransactions(
+  bankState: BankConnectionState,
+  categories: FinanceCategory[] = [],
+): CategorizedBankTransaction[] {
   return bankState.recentTransactions
     .filter((transaction) => !transaction.pending)
-    .map((transaction) => ({
-      ...transaction,
-      resolvedCategory: resolveCategory(transaction),
-      flow: transaction.amount < 0 ? ("income" as const) : ("expense" as const),
-      merchantKey: normalizeMerchantKey(transaction),
-    }))
+    .map((transaction) => categorizeBankTransaction(transaction, categories))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
@@ -208,7 +252,7 @@ export function getRecurringBankEntries(transactions: CategorizedBankTransaction
     }
 
     const sortedByDate = [...bucket].sort((a, b) => a.date.localeCompare(b.date));
-    const amounts = sortedByDate.map((transaction) => Math.abs(transaction.amount));
+    const amounts = sortedByDate.map((transaction) => transaction.amount);
     const avgAmount = average(amounts);
     if (avgAmount <= 0) {
       continue;
@@ -257,11 +301,12 @@ export function getRecurringBankEntries(transactions: CategorizedBankTransaction
 export function getEffectiveFinanceView(
   financeState: FinanceStatePayload,
   bankState: BankConnectionState,
+  categories: FinanceCategory[] = [],
 ): EffectiveFinanceView {
-  const categorizedBankTransactions = getCategorizedBankTransactions(bankState);
+  const categorizedBankTransactions = getCategorizedBankTransactions(bankState, categories);
 
-  const incomeByName = new Map<string, { amount: number; category: string }>();
-  const expenseByName = new Map<string, { amount: number; category: string }>();
+  const incomeByName = new Map<string, { amount: number; category: string; categoryId: string | undefined }>();
+  const expenseByName = new Map<string, { amount: number; category: string; categoryId: string | undefined }>();
 
   for (const transaction of categorizedBankTransactions) {
     if (!isRecentTransaction(transaction.date)) {
@@ -273,16 +318,18 @@ export function getEffectiveFinanceView(
     if (transaction.flow === "income") {
       const current = incomeByName.get(key);
       incomeByName.set(key, {
-        amount: (current?.amount ?? 0) + Math.abs(transaction.amount),
-        category: current?.category ?? normalizeIncomeCategory(transaction.resolvedCategory),
+        amount: (current?.amount ?? 0) + transaction.amount,
+        category: current?.category ?? normalizeIncomeCategory(transaction.resolvedCategory, categories),
+        categoryId: current?.categoryId ?? (transaction.resolvedCategoryId ?? undefined),
       });
       continue;
     }
 
     const current = expenseByName.get(key);
     expenseByName.set(key, {
-      amount: (current?.amount ?? 0) + Math.abs(transaction.amount),
-      category: current?.category ?? normalizeExpenseCategory(transaction.resolvedCategory),
+      amount: (current?.amount ?? 0) + transaction.amount,
+      category: current?.category ?? normalizeExpenseCategory(transaction.resolvedCategory, categories),
+      categoryId: current?.categoryId ?? (transaction.resolvedCategoryId ?? undefined),
     });
   }
 
@@ -292,6 +339,7 @@ export function getEffectiveFinanceView(
       id: `bank-income-${index}-${name}`,
       name,
       category: value.category,
+      categoryId: value.categoryId,
       amount: value.amount,
       rawAmount: value.amount.toFixed(2),
       frequency: "monthly",
@@ -303,6 +351,7 @@ export function getEffectiveFinanceView(
       id: `bank-expense-${index}-${name}`,
       name,
       category: value.category,
+      categoryId: value.categoryId,
       amount: value.amount,
       rawAmount: value.amount.toFixed(2),
       frequency: "monthly",

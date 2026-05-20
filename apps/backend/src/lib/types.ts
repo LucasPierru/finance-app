@@ -18,5 +18,6 @@ export type {
   StoredBankState,
   UpdateBudgetBody,
   UpdateBudgetPlanBody,
+  UpdateTransactionBody,
   User,
 } from "@finance-app/shared-types";

@@ -8,6 +8,8 @@
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
   import { SlidersHorizontal } from "lucide-svelte";
+  import { apiRequest } from "$lib/api/client";
+  import type { FinanceCategory } from "@finance-app/shared-types";
 
   type Mode = "transactions" | "recurring";
 
@@ -17,10 +19,12 @@
     name: string;
     merchantName: string | null;
     resolvedCategory: string;
+    resolvedCategoryId: string | null;
     pending: boolean;
     flow: "income" | "expense";
     amount: number;
     isoCurrencyCode: string | null;
+    categoryId: string | null;
   }
 
   interface RecurringEntry {
@@ -49,6 +53,7 @@
     selectedMonthLabel,
     transactions,
     recurringEntries,
+    categories = [],
     serverPage = 1,
     serverTotalPages = 1,
     serverTotal = 0,
@@ -58,6 +63,7 @@
     onPageChange,
     onFilterChange,
     onSearchInput,
+    onTransactionUpdated,
   }: {
     connected: boolean;
     synced: boolean;
@@ -66,6 +72,7 @@
     selectedMonthLabel: string;
     transactions: TransactionItem[];
     recurringEntries: RecurringEntry[];
+    categories?: FinanceCategory[];
     serverPage?: number;
     serverTotalPages?: number;
     serverTotal?: number;
@@ -75,6 +82,7 @@
     onPageChange?: (page: number) => void;
     onFilterChange?: (patch: Record<string, string>) => void;
     onSearchInput?: (value: string) => void;
+    onTransactionUpdated?: (tx: TransactionItem) => void;
   } = $props();
 
   // Client-side pagination only used for recurring entries
@@ -108,6 +116,42 @@
   );
 
   let showFilters = $state(false);
+
+  // ── Inline editing ────────────────────────────────────────────────────────
+  let editingId = $state<string | null>(null);
+  let editCategoryId = $state("");
+  let editFlow = $state<"income" | "expense">("expense");
+  let editSaving = $state(false);
+
+  function openEdit(tx: TransactionItem) {
+    editingId = tx.transactionId;
+    editCategoryId = tx.categoryId ?? tx.resolvedCategoryId ?? "";
+    editFlow = tx.flow;
+  }
+
+  function closeEdit() {
+    editingId = null;
+  }
+
+  async function saveEdit() {
+    if (!editingId) return;
+    editSaving = true;
+    try {
+      const updated = await apiRequest<TransactionItem>(`/api/plaid/transactions/${editingId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          categoryId: editCategoryId || null,
+          flow: editFlow,
+        }),
+      });
+      onTransactionUpdated?.(updated);
+      closeEdit();
+    } finally {
+      editSaving = false;
+    }
+  }
+
+  const editableCategories = $derived(categories.filter((c) => c.type === editFlow));
 
   function clearFilters() {
     onFilterChange?.({ flow: "", search: "", minAmount: "", maxAmount: "" });
@@ -246,10 +290,50 @@
                     <p class="text-slate-500">Date</p>
                     <p class="text-right text-slate-300">{tx.date}</p>
                     <p class="text-slate-500">Category</p>
-                    <p class="text-right text-slate-300">{tx.resolvedCategory}</p>
+                    <p class="text-right text-slate-300">
+                      {tx.resolvedCategory}
+                      {#if tx.categoryId}
+                        <span class="ml-1 text-slate-500">(edited)</span>
+                      {/if}
+                    </p>
                     <p class="text-slate-500">Pending</p>
                     <p class="text-right text-slate-300">{tx.pending ? "Yes" : "No"}</p>
                   </div>
+                  {#if editingId === tx.transactionId}
+                    <div class="mt-3 space-y-2 border-t border-[#252a3a] pt-3">
+                      <div class="flex gap-2">
+                        <div class="flex flex-1 flex-col gap-1">
+                          <Label class="text-xs text-slate-500">Flow</Label>
+                          <Select bind:value={editFlow} class="h-8 text-xs">
+                            <option value="expense">Expense</option>
+                            <option value="income">Income</option>
+                          </Select>
+                        </div>
+                        <div class="flex flex-[2] flex-col gap-1">
+                          <Label class="text-xs text-slate-500">Category</Label>
+                          <Select bind:value={editCategoryId} class="h-8 text-xs">
+                            <option value="">Auto-detect</option>
+                            {#each editableCategories as cat (cat.id)}
+                              <option value={cat.id}>{cat.name}</option>
+                            {/each}
+                          </Select>
+                        </div>
+                      </div>
+                      <div class="flex gap-2">
+                        <Button size="sm" class="h-7 flex-1 text-xs" onclick={saveEdit} disabled={editSaving}>
+                          {editSaving ? "Saving…" : "Save"}
+                        </Button>
+                        <Button size="sm" variant="outline" class="h-7 px-3 text-xs" onclick={closeEdit}>Cancel</Button>
+                      </div>
+                    </div>
+                  {:else}
+                    <button
+                      onclick={() => openEdit(tx)}
+                      class="mt-2 w-full rounded border border-[#252a3a] py-1 text-xs text-slate-500 transition-colors hover:border-slate-600 hover:text-slate-300"
+                    >
+                      Edit category
+                    </button>
+                  {/if}
                 </article>
               {/each}
             </div>
@@ -264,22 +348,72 @@
                     <TableHead class="px-5 py-3">Category</TableHead>
                     <TableHead class="px-5 py-3">Pending</TableHead>
                     <TableHead class="px-5 py-3">Amount</TableHead>
+                    <TableHead class="px-5 py-3"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {#each transactions as tx (tx.transactionId)}
-                    <TableRow class="hover:bg-[#1c2030]">
+                    <TableRow class="hover:bg-[#1c2030] {editingId === tx.transactionId ? 'bg-[#1c2030]' : ''}">
                       <TableCell class="px-5 py-3 text-slate-400">{tx.date}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-200">{tx.name}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-400">{tx.merchantName ?? "-"}</TableCell>
-                      <TableCell class="px-5 py-3 text-slate-400">{tx.resolvedCategory}</TableCell>
+                      <TableCell class="px-5 py-3 text-slate-400">
+                        <span>
+                          {tx.resolvedCategory}
+                          {#if tx.categoryId}
+                            <span class="ml-1 text-xs text-slate-600">(edited)</span>
+                          {/if}
+                        </span>
+                      </TableCell>
                       <TableCell class="px-5 py-3 text-slate-400">{tx.pending ? "Yes" : "No"}</TableCell>
                       <TableCell
                         class="px-5 py-3 font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}"
                       >
                         {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                       </TableCell>
+                      <TableCell class="px-5 py-3">
+                        {#if editingId !== tx.transactionId}
+                          <button
+                            onclick={() => openEdit(tx)}
+                            class="rounded px-2 py-1 text-xs text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+                          >
+                            Edit
+                          </button>
+                        {/if}
+                      </TableCell>
                     </TableRow>
+                    {#if editingId === tx.transactionId}
+                      <tr class="border-b border-[#252a3a] bg-[#161925]">
+                        <td colspan="7" class="px-5 py-3">
+                          <div class="flex flex-wrap items-center gap-4">
+                            <div class="flex items-center gap-2">
+                              <Label class="whitespace-nowrap text-xs text-slate-500">Flow</Label>
+                              <Select bind:value={editFlow} class="h-8 w-28 text-xs">
+                                <option value="expense">Expense</option>
+                                <option value="income">Income</option>
+                              </Select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                              <Label class="whitespace-nowrap text-xs text-slate-500">Category</Label>
+                              <Select bind:value={editCategoryId} class="h-8 w-44 text-xs">
+                                <option value="">Auto-detect</option>
+                                {#each editableCategories as cat (cat.id)}
+                                  <option value={cat.id}>{cat.name}</option>
+                                {/each}
+                              </Select>
+                            </div>
+                            <div class="ml-auto flex items-center gap-1.5">
+                              <Button size="sm" class="h-7 px-3 text-xs" onclick={saveEdit} disabled={editSaving}>
+                                {editSaving ? "Saving…" : "Save"}
+                              </Button>
+                              <Button size="sm" variant="outline" class="h-7 px-2 text-xs" onclick={closeEdit}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    {/if}
                   {/each}
                 </TableBody>
               </Table>

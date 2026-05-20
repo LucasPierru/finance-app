@@ -18,17 +18,32 @@
 
   let {
     expenseCategories,
+    editPlan = undefined,
     oncreated,
+    onupdated,
     oncancel,
   }: {
     expenseCategories: FinanceCategory[];
-    oncreated: (plan: BudgetPlan) => void;
+    editPlan?: BudgetPlan;
+    oncreated?: (plan: BudgetPlan) => void;
+    onupdated?: (plan: BudgetPlan) => void;
     oncancel?: () => void;
   } = $props();
 
-  let planName = $state("");
-  let nextKey = $state(1);
-  let items = $state<ItemDraft[]>([{ key: 0, categoryId: "", amount: "", period: "monthly" }]);
+  const isEditing = $derived(editPlan !== undefined);
+
+  let planName = $state(editPlan?.name ?? "");
+  let nextKey = $state(editPlan ? editPlan.items.length : 1);
+  let items = $state<ItemDraft[]>(
+    editPlan && editPlan.items.length > 0
+      ? editPlan.items.map((item, i) => ({
+          key: i,
+          categoryId: item.categoryId ?? "",
+          amount: String(item.amount),
+          period: item.period as Period,
+        }))
+      : [{ key: 0, categoryId: "", amount: "", period: "monthly" }],
+  );
   let error = $state<string | null>(null);
   let submitting = $state(false);
 
@@ -59,22 +74,32 @@
       return;
     }
 
+    const body = JSON.stringify({
+      name: planName.trim(),
+      items: validItems.map((item) => ({
+        categoryId: item.categoryId || null,
+        amount: Number(item.amount),
+        period: item.period,
+      })),
+    });
+
     submitting = true;
     try {
-      const plan = await apiRequest<BudgetPlan>("/api/budget/plans", {
-        method: "POST",
-        body: JSON.stringify({
-          name: planName.trim(),
-          items: validItems.map((item) => ({
-            categoryId: item.categoryId || null,
-            amount: Number(item.amount),
-            period: item.period,
-          })),
-        }),
-      });
-      oncreated(plan);
+      if (isEditing && editPlan) {
+        const plan = await apiRequest<BudgetPlan>(`/api/budget/plans/${editPlan.id}`, {
+          method: "PUT",
+          body,
+        });
+        onupdated?.(plan);
+      } else {
+        const plan = await apiRequest<BudgetPlan>("/api/budget/plans", {
+          method: "POST",
+          body,
+        });
+        oncreated?.(plan);
+      }
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : "Failed to create budget.";
+      error = e instanceof Error ? e.message : isEditing ? "Failed to update budget." : "Failed to create budget.";
     } finally {
       submitting = false;
     }
@@ -152,7 +177,11 @@
 
   <div class="flex gap-3 pt-1">
     <Button onclick={handleSubmit} disabled={submitting} class="h-10 flex-1">
-      {submitting ? "Creating…" : "Create budget"}
+      {#if submitting}
+        {isEditing ? "Saving…" : "Creating…"}
+      {:else}
+        {isEditing ? "Save changes" : "Create budget"}
+      {/if}
     </Button>
     {#if oncancel}
       <Button onclick={oncancel} variant="outline" class="h-10 px-5">Cancel</Button>
