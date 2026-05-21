@@ -7,7 +7,8 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
-  import { SlidersHorizontal } from "lucide-svelte";
+  import { SlidersHorizontal, Pencil, Trash2 } from "lucide-svelte";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { apiRequest } from "$lib/api/client";
   import type { FinanceCategory } from "@finance-app/shared-types";
 
@@ -25,6 +26,7 @@
     amount: number;
     isoCurrencyCode: string | null;
     categoryId: string | null;
+    isTransfer?: boolean;
   }
 
   interface RecurringEntry {
@@ -83,6 +85,7 @@
     onFilterChange?: (patch: Record<string, string>) => void;
     onSearchInput?: (value: string) => void;
     onTransactionUpdated?: (tx: TransactionItem) => void;
+    onTransactionDeleted?: (transactionId: string) => void;
   } = $props();
 
   // Client-side pagination only used for recurring entries
@@ -117,41 +120,62 @@
 
   let showFilters = $state(false);
 
-  // ── Inline editing ────────────────────────────────────────────────────────
-  let editingId = $state<string | null>(null);
+  // ── Modal state ────────────────────────────────────────────────────────────
+  let modalTx = $state<TransactionItem | null>(null);
+  let modalMode = $state<"edit" | "delete" | null>(null);
   let editCategoryId = $state("");
   let editFlow = $state<"income" | "expense">("expense");
   let editSaving = $state(false);
+  let applyToSimilar = $state(false);
+  let deleteDeleting = $state(false);
 
-  function openEdit(tx: TransactionItem) {
-    editingId = tx.transactionId;
+  const editableCategories = $derived(categories.filter((c) => c.type === editFlow));
+
+  function openEditModal(tx: TransactionItem) {
+    modalTx = tx;
+    modalMode = "edit";
     editCategoryId = tx.categoryId ?? tx.resolvedCategoryId ?? "";
     editFlow = tx.flow;
+    applyToSimilar = false;
   }
 
-  function closeEdit() {
-    editingId = null;
+  function openDeleteModal(tx: TransactionItem) {
+    modalTx = tx;
+    modalMode = "delete";
+  }
+
+  function closeModal() {
+    modalTx = null;
+    modalMode = null;
   }
 
   async function saveEdit() {
-    if (!editingId) return;
+    if (!modalTx) return;
     editSaving = true;
     try {
-      const updated = await apiRequest<TransactionItem>(`/api/plaid/transactions/${editingId}`, {
+      const updated = await apiRequest<TransactionItem>(`/api/plaid/transactions/${modalTx.transactionId}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          categoryId: editCategoryId || null,
-          flow: editFlow,
-        }),
+        body: JSON.stringify({ categoryId: editCategoryId || null, flow: editFlow, applyToSimilar }),
       });
       onTransactionUpdated?.(updated);
-      closeEdit();
+      closeModal();
     } finally {
       editSaving = false;
     }
   }
 
-  const editableCategories = $derived(categories.filter((c) => c.type === editFlow));
+  async function confirmDelete() {
+    if (!modalTx) return;
+    deleteDeleting = true;
+    try {
+      await apiRequest(`/api/plaid/transactions/${modalTx.transactionId}`, { method: "DELETE" });
+      const id = modalTx.transactionId;
+      closeModal();
+      onTransactionDeleted?.(id);
+    } finally {
+      deleteDeleting = false;
+    }
+  }
 
   function clearFilters() {
     onFilterChange?.({ flow: "", search: "", minAmount: "", maxAmount: "" });
@@ -278,13 +302,14 @@
                       <p class="truncate text-sm font-semibold text-slate-200">{tx.name}</p>
                       <p class="text-xs text-slate-500">{tx.merchantName ?? "-"}</p>
                     </div>
-                    <p
-                      class="shrink-0 text-sm font-semibold {tx.flow === 'income'
-                        ? 'text-emerald-400'
-                        : 'text-rose-400'}"
-                    >
-                      {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
-                    </p>
+                    <div class="flex shrink-0 items-center gap-2">
+                      {#if tx.isTransfer}
+                        <span class="rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400">Transfer</span>
+                      {/if}
+                      <p class="text-sm font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
+                        {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
+                      </p>
+                    </div>
                   </div>
                   <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                     <p class="text-slate-500">Date</p>
@@ -299,41 +324,21 @@
                     <p class="text-slate-500">Pending</p>
                     <p class="text-right text-slate-300">{tx.pending ? "Yes" : "No"}</p>
                   </div>
-                  {#if editingId === tx.transactionId}
-                    <div class="mt-3 space-y-2 border-t border-[#252a3a] pt-3">
-                      <div class="flex gap-2">
-                        <div class="flex flex-1 flex-col gap-1">
-                          <Label class="text-xs text-slate-500">Flow</Label>
-                          <Select bind:value={editFlow} class="h-8 text-xs">
-                            <option value="expense">Expense</option>
-                            <option value="income">Income</option>
-                          </Select>
-                        </div>
-                        <div class="flex flex-[2] flex-col gap-1">
-                          <Label class="text-xs text-slate-500">Category</Label>
-                          <Select bind:value={editCategoryId} class="h-8 text-xs">
-                            <option value="">Auto-detect</option>
-                            {#each editableCategories as cat (cat.id)}
-                              <option value={cat.id}>{cat.name}</option>
-                            {/each}
-                          </Select>
-                        </div>
-                      </div>
-                      <div class="flex gap-2">
-                        <Button size="sm" class="h-7 flex-1 text-xs" onclick={saveEdit} disabled={editSaving}>
-                          {editSaving ? "Saving…" : "Save"}
-                        </Button>
-                        <Button size="sm" variant="outline" class="h-7 px-3 text-xs" onclick={closeEdit}>Cancel</Button>
-                      </div>
-                    </div>
-                  {:else}
+                  <div class="mt-3 flex gap-2 border-t border-[#252a3a] pt-3">
                     <button
-                      onclick={() => openEdit(tx)}
-                      class="mt-2 w-full rounded border border-[#252a3a] py-1 text-xs text-slate-500 transition-colors hover:border-slate-600 hover:text-slate-300"
+                      onclick={() => openEditModal(tx)}
+                      class="flex flex-1 items-center justify-center gap-2 rounded border border-[#252a3a] py-2 text-sm text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
                     >
-                      Edit category
+                      <Pencil class="h-4 w-4" />
+                      Edit
                     </button>
-                  {/if}
+                    <button
+                      onclick={() => openDeleteModal(tx)}
+                      class="flex items-center justify-center gap-2 rounded border border-[#252a3a] px-4 py-2 text-sm text-slate-400 transition-colors hover:border-rose-800 hover:text-rose-400"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                    </button>
+                  </div>
                 </article>
               {/each}
             </div>
@@ -353,8 +358,8 @@
                 </TableHeader>
                 <TableBody>
                   {#each transactions as tx (tx.transactionId)}
-                    <TableRow class="hover:bg-[#1c2030] {editingId === tx.transactionId ? 'bg-[#1c2030]' : ''}">
-                      <TableCell class="px-5 py-3 text-slate-400">{tx.date}</TableCell>
+                    <TableRow class="hover:bg-[#1c2030]">
+                      <TableCell class="whitespace-nowrap px-5 py-3 text-slate-400">{tx.date}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-200">{tx.name}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-400">{tx.merchantName ?? "-"}</TableCell>
                       <TableCell class="px-5 py-3 text-slate-400">
@@ -362,6 +367,11 @@
                           {tx.resolvedCategory}
                           {#if tx.categoryId}
                             <span class="ml-1 text-xs text-slate-600">(edited)</span>
+                          {/if}
+                          {#if tx.isTransfer}
+                            <span class="ml-1 rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400"
+                              >Transfer</span
+                            >
                           {/if}
                         </span>
                       </TableCell>
@@ -372,48 +382,24 @@
                         {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                       </TableCell>
                       <TableCell class="px-5 py-3">
-                        {#if editingId !== tx.transactionId}
+                        <div class="flex items-center gap-0.5">
                           <button
-                            onclick={() => openEdit(tx)}
-                            class="rounded px-2 py-1 text-xs text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+                            onclick={() => openEditModal(tx)}
+                            class="rounded p-2 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+                            title="Edit"
                           >
-                            Edit
+                            <Pencil class="h-4 w-4" />
                           </button>
-                        {/if}
+                          <button
+                            onclick={() => openDeleteModal(tx)}
+                            class="rounded p-2 text-slate-500 transition-colors hover:bg-rose-900/40 hover:text-rose-400"
+                            title="Delete"
+                          >
+                            <Trash2 class="h-4 w-4" />
+                          </button>
+                        </div>
                       </TableCell>
                     </TableRow>
-                    {#if editingId === tx.transactionId}
-                      <tr class="border-b border-[#252a3a] bg-[#161925]">
-                        <td colspan="7" class="px-5 py-3">
-                          <div class="flex flex-wrap items-center gap-4">
-                            <div class="flex items-center gap-2">
-                              <Label class="whitespace-nowrap text-xs text-slate-500">Flow</Label>
-                              <Select bind:value={editFlow} class="h-8 w-28 text-xs">
-                                <option value="expense">Expense</option>
-                                <option value="income">Income</option>
-                              </Select>
-                            </div>
-                            <div class="flex items-center gap-2">
-                              <Label class="whitespace-nowrap text-xs text-slate-500">Category</Label>
-                              <Select bind:value={editCategoryId} class="h-8 w-44 text-xs">
-                                <option value="">Auto-detect</option>
-                                {#each editableCategories as cat (cat.id)}
-                                  <option value={cat.id}>{cat.name}</option>
-                                {/each}
-                              </Select>
-                            </div>
-                            <div class="ml-auto flex items-center gap-1.5">
-                              <Button size="sm" class="h-7 px-3 text-xs" onclick={saveEdit} disabled={editSaving}>
-                                {editSaving ? "Saving…" : "Save"}
-                              </Button>
-                              <Button size="sm" variant="outline" class="h-7 px-2 text-xs" onclick={closeEdit}>
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    {/if}
                   {/each}
                 </TableBody>
               </Table>
@@ -526,3 +512,72 @@
     {/if}
   </CardContent>
 </Card>
+
+<!-- Edit Dialog -->
+<Dialog.Root
+  open={modalMode === "edit" && modalTx !== null}
+  onOpenChange={(v) => {
+    if (!v) closeModal();
+  }}
+>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Edit Transaction</Dialog.Title>
+      <Dialog.Description class="truncate">{modalTx?.name ?? ""}</Dialog.Description>
+    </Dialog.Header>
+    <div class="space-y-4 py-2">
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Type</Label>
+        <Select bind:value={editFlow} class="h-10">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Category</Label>
+        <Select bind:value={editCategoryId} class="h-10">
+          <option value="">Auto-detect</option>
+          {#each editableCategories as cat (cat.id)}
+            <option value={cat.id}>{cat.name}</option>
+          {/each}
+        </Select>
+      </div>
+      <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
+        <input type="checkbox" bind:checked={applyToSimilar} class="rounded" />
+        Apply to all transactions from the same merchant
+      </label>
+    </div>
+    <Dialog.Footer>
+      <Button variant="outline" onclick={closeModal}>Cancel</Button>
+      <Button onclick={saveEdit} disabled={editSaving}>
+        {editSaving ? "Saving…" : "Save changes"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Delete Dialog -->
+<Dialog.Root
+  open={modalMode === "delete" && modalTx !== null}
+  onOpenChange={(v) => {
+    if (!v) closeModal();
+  }}
+>
+  <Dialog.Content>
+    <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-rose-900/40">
+      <Trash2 class="h-5 w-5 text-rose-400" />
+    </div>
+    <Dialog.Header>
+      <Dialog.Title>Delete Transaction</Dialog.Title>
+      <Dialog.Description>Are you sure you want to delete this transaction?</Dialog.Description>
+    </Dialog.Header>
+    <p class="my-2 truncate font-medium text-slate-200">{modalTx?.name ?? ""}</p>
+    <p class="text-xs text-slate-500">This action cannot be undone.</p>
+    <Dialog.Footer class="mt-4">
+      <Button variant="outline" onclick={closeModal}>Cancel</Button>
+      <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
+        {deleteDeleting ? "Deleting…" : "Delete"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

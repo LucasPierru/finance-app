@@ -72,7 +72,7 @@
   });
 </script>
 
-<div class="h-screen overflow-hidden bg-[#0d0f14] text-slate-100 font-sans">
+<div class="h-screen overflow-hidden bg-wf-bg text-wf-text font-sans">
   {#if isAuthRoute}
     <main class="h-full w-full overflow-y-auto">{@render children?.()}</main>
   {:else}

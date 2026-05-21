@@ -24,6 +24,7 @@ export interface CategorizedBankTransaction {
   resolvedCategory: string;
   resolvedCategoryId: string | null;
   merchantKey: string;
+  isTransfer: boolean;
 }
 
 export interface RecurringBankEntry {
@@ -46,6 +47,7 @@ export interface EffectiveFinanceView {
   isUsingSyncedCashflow: boolean;
   categorizedBankTransactions: CategorizedBankTransaction[];
   recurringBankEntries: RecurringBankEntry[];
+  detectedTransferCount: number;
 }
 
 export const emptyFinanceState: FinanceStatePayload = {
@@ -97,14 +99,14 @@ const categoryKeywordMap: Array<{ category: string; keywords: string[] }> = [
   { category: "Housing", keywords: ["rent", "mortgage", "landlord", "property"] },
   { category: "Utilities", keywords: ["electric", "water", "gas", "internet", "phone", "utility"] },
   { category: "Food", keywords: ["grocery", "market", "restaurant", "coffee", "uber eats", "doordash"] },
-  { category: "Transport", keywords: ["fuel", "gas station", "uber", "lyft", "metro", "transit"] },
-  { category: "Insurance", keywords: ["insurance", "insure"] },
-  { category: "Health", keywords: ["pharmacy", "clinic", "hospital", "medical", "dental"] },
-  { category: "Shopping", keywords: ["amazon", "store", "shop", "retail"] },
-  { category: "Entertainment", keywords: ["netflix", "spotify", "cinema", "game", "streaming"] },
-  { category: "Salary", keywords: ["salary", "payroll", "paycheck", "deposit"] },
-  { category: "Investments", keywords: ["dividend", "interest", "brokerage"] },
-  { category: "Benefits", keywords: ["benefit", "refund", "rebate"] },
+  { category: "Transport", keywords: ["fuel", "gas station", "uber", "lyft", "metro", "transit", "airline", "airlines", "travel", "car rental", "parking", "toll", "train", "bus", "subway"] },
+  { category: "Insurance", keywords: ["insurance", "insure", "geico", "allstate", "progressive"] },
+  { category: "Health", keywords: ["pharmacy", "clinic", "hospital", "medical", "dental", "doctor", "cvs", "walgreens", "health", "vision", "optometrist"] },
+  { category: "Shopping", keywords: ["amazon", "store", "shop", "retail", "shops", "walmart", "target", "costco", "ebay", "online shopping", "merchandise", "clothing"] },
+  { category: "Entertainment", keywords: ["netflix", "spotify", "cinema", "game", "streaming", "hulu", "disney", "music", "gym", "fitness", "recreation", "apple tv", "youtube", "twitch"] },
+  { category: "Salary", keywords: ["salary", "payroll", "paycheck", "deposit", "direct deposit", "paystub"] },
+  { category: "Investments", keywords: ["dividend", "interest", "brokerage", "fidelity", "vanguard", "schwab", "robinhood", "investment"] },
+  { category: "Benefits", keywords: ["benefit", "refund", "rebate", "cashback", "reward"] },
 ];
 
 function normalizeMerchantKey(transaction: BankTransaction): string {
@@ -112,6 +114,26 @@ function normalizeMerchantKey(transaction: BankTransaction): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+/**
+ * Detects internal transfers (credit card payments) that appear in both
+ * a checking account AND the credit card account, causing double-counting.
+ * Only flags Transfer > Credit Card category — NOT payroll/ACH deposits which
+ * Plaid also puts under the "Transfer" top-level category.
+ */
+export function isTransferTransaction(transaction: Pick<BankTransaction, 'category' | 'name'>): boolean {
+  // Plaid: Transfer > Credit Card = credit card payment (shows in both accounts)
+  if (
+    transaction.category.length >= 2 &&
+    transaction.category[0]?.toLowerCase() === 'transfer' &&
+    transaction.category[1]?.toLowerCase() === 'credit card'
+  ) {
+    return true;
+  }
+  // Name-based fallback for credit card payments
+  const n = transaction.name.toLowerCase();
+  return n.includes('credit card payment') || n.includes('autopay');
 }
 
 function resolveCategoryFromDb(
@@ -221,6 +243,7 @@ export function categorizeBankTransaction(
     resolvedCategoryId,
     flow,
     merchantKey: normalizeMerchantKey(transaction),
+    isTransfer: isTransferTransaction(transaction),
   };
 }
 
@@ -229,7 +252,6 @@ export function getCategorizedBankTransactions(
   categories: FinanceCategory[] = [],
 ): CategorizedBankTransaction[] {
   return bankState.recentTransactions
-    .filter((transaction) => !transaction.pending)
     .map((transaction) => categorizeBankTransaction(transaction, categories))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -307,9 +329,15 @@ export function getEffectiveFinanceView(
 
   const incomeByName = new Map<string, { amount: number; category: string; categoryId: string | undefined }>();
   const expenseByName = new Map<string, { amount: number; category: string; categoryId: string | undefined }>();
+  let detectedTransferCount = 0;
 
   for (const transaction of categorizedBankTransactions) {
     if (!isRecentTransaction(transaction.date)) {
+      continue;
+    }
+
+    if (transaction.isTransfer) {
+      detectedTransferCount++;
       continue;
     }
 
@@ -372,6 +400,7 @@ export function getEffectiveFinanceView(
     isUsingSyncedCashflow,
     categorizedBankTransactions,
     recurringBankEntries: getRecurringBankEntries(categorizedBankTransactions),
+    detectedTransferCount,
   };
 }
 

@@ -6,10 +6,12 @@ import type { BankAccount, BankTransaction, StoredBankState } from "@lib/types";
 import type { CreateLinkTokenBody, ExchangePublicTokenBody, TransactionFilters, UpdateTransactionBody } from "@finance-app/shared-types";
 import {
   clearStoredBankState,
+  deleteTransaction,
   getBankConnectionState,
   getPagedTransactions,
   getStoredBankState,
   updateTransactionOverride,
+  bulkUpdateTransactionsByMerchant,
   upsertStoredBankState,
 } from "@repositories/plaid";
 
@@ -176,11 +178,15 @@ plaidRouter.patch(
     try {
       const { userId } = getAuthenticatedUser(req);
       const { id } = req.params;
-      const { categoryId, flow } = req.body;
+      const { categoryId, flow, applyToSimilar } = req.body;
 
       if (flow !== undefined && flow !== "income" && flow !== "expense") {
         res.status(400).json({ message: "flow must be 'income' or 'expense'" });
         return;
+      }
+
+      if (applyToSimilar) {
+        await bulkUpdateTransactionsByMerchant(userId, id, categoryId, flow);
       }
 
       const updated = await updateTransactionOverride(userId, id, categoryId, flow);
@@ -190,6 +196,17 @@ plaidRouter.patch(
     }
   },
 );
+
+plaidRouter.delete("/transactions/:id", async (req: Request<{ id: string }>, res, next) => {
+  try {
+    const { userId } = getAuthenticatedUser(req);
+    const { id } = req.params;
+    await deleteTransaction(userId, id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
 
 plaidRouter.post("/link-token", async (req: Request<Record<string, string>, object, CreateLinkTokenBody>, res, next) => {
   try {

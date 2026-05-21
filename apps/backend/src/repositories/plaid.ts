@@ -136,8 +136,22 @@ export async function getPagedTransactions(
   params.push(offset);
   const offsetParam = params.length;
 
-  const [countResult, dataResult, summaryResult] = await Promise.all([
-    pool.query(`SELECT COUNT(*) FROM transactions t WHERE ${where}`, params.slice(0, -2)),
+  // Transfer detection: only Credit Card subcategory (Transfer > Credit Card in Plaid's
+  // legacy hierarchy). Payroll, ACH, and other transfers also have plaid_category[0]='Transfer'
+  // but must NOT be excluded — they are legitimate income/expense entries.
+  // COALESCE(..., FALSE) is critical: plaid_category can be an empty array ([]) which makes
+  // plaid_category->>0 return NULL, and NOT NULL = NULL (falsy), silently zeroing totals.
+  const isTransfer = `COALESCE(
+    (LOWER(t.plaid_category->>0) = 'transfer' AND LOWER(t.plaid_category->>1) = 'credit card')
+    OR LOWER(t.name) LIKE '%credit card payment%'
+    OR LOWER(t.name) LIKE '%autopay%',
+    FALSE
+  )`;
+
+  const summaryParams = params.slice(0, -2);
+
+  const [countResult, dataResult, summaryResult, breakdownResult, dailyResult] = await Promise.all([
+    pool.query(`SELECT COUNT(*) FROM transactions t WHERE ${where}`, summaryParams),
     pool.query(
       `SELECT t.id, t.account_id, t.date, t.name, t.merchant_name, t.amount,
               t.iso_currency_code, t.plaid_category, t.pending,
@@ -152,10 +166,36 @@ export async function getPagedTransactions(
     ),
     pool.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN t.flow = 'income' THEN t.amount ELSE 0 END), 0)  AS total_income,
-         COALESCE(SUM(CASE WHEN t.flow = 'expense' THEN t.amount ELSE 0 END), 0) AS total_expenses
+         COALESCE(SUM(CASE WHEN t.flow = 'income'  AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_income,
+         COALESCE(SUM(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_expenses,
+         COUNT(CASE WHEN ${isTransfer} THEN 1 END) AS transfer_count
        FROM transactions t WHERE ${where}`,
-      params.slice(0, -2),
+      summaryParams,
+    ),
+    pool.query(
+      `SELECT
+         COALESCE(c.name, t.plaid_category->>0, 'Other') AS category,
+         SUM(t.amount) AS total_amount
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+       WHERE ${where}
+         AND t.flow = 'expense'
+         AND NOT ${isTransfer}
+       GROUP BY COALESCE(c.name, t.plaid_category->>0, 'Other')
+       ORDER BY total_amount DESC`,
+      summaryParams,
+    ),
+    pool.query(
+      `SELECT
+         TO_CHAR(t.date, 'YYYY-MM-DD') AS day,
+         SUM(t.amount) AS total_amount
+       FROM transactions t
+       WHERE ${where}
+         AND t.flow = 'expense'
+         AND NOT ${isTransfer}
+       GROUP BY day
+       ORDER BY day ASC`,
+      summaryParams,
     ),
   ]);
 
@@ -171,6 +211,15 @@ export async function getPagedTransactions(
     summary: {
       totalIncome: Number(summaryRow.total_income),
       totalExpenses: Number(summaryRow.total_expenses),
+      transferCount: Number(summaryRow.transfer_count),
+      categoryBreakdown: breakdownResult.rows.map((r) => ({
+        category: String(r.category),
+        totalAmount: Number(r.total_amount),
+      })),
+      dailyExpenseBreakdown: dailyResult.rows.map((r) => ({
+        date: String(r.day),
+        totalAmount: Number(r.total_amount),
+      })),
     },
   };
 }
@@ -360,6 +409,59 @@ export async function updateTransactionOverride(
     if (catResult.rows.length > 0) categoryName = String(catResult.rows[0].name);
   }
   return mapTransactionRow({ ...row, category_name: categoryName });
+}
+
+/**
+ * Updates the category/flow for all transactions matching the same merchant name
+ * (or transaction name when no merchant) as the given transaction ID.
+ * Returns the number of affected rows.
+ */
+export async function bulkUpdateTransactionsByMerchant(
+  userId: string,
+  transactionId: string,
+  categoryId: string | null | undefined,
+  flow: string | null | undefined,
+): Promise<number> {
+  const txResult = await pool.query(
+    `SELECT merchant_name, name FROM transactions WHERE id = $1 AND user_id = $2 AND source = 'plaid'`,
+    [transactionId, userId],
+  );
+  if ((txResult.rowCount ?? 0) === 0) {
+    throw new AppError(404, "Transaction not found");
+  }
+
+  const row = txResult.rows[0];
+  const merchantName = row.merchant_name ? String(row.merchant_name) : null;
+  const txName = String(row.name);
+
+  let result;
+  if (merchantName) {
+    result = await pool.query(
+      `UPDATE transactions
+       SET category_id = $1, flow = COALESCE($2::text, flow), updated_at = NOW()
+       WHERE user_id = $3 AND source = 'plaid' AND LOWER(merchant_name) = LOWER($4)`,
+      [categoryId ?? null, flow ?? null, userId, merchantName],
+    );
+  } else {
+    result = await pool.query(
+      `UPDATE transactions
+       SET category_id = $1, flow = COALESCE($2::text, flow), updated_at = NOW()
+       WHERE user_id = $3 AND source = 'plaid' AND merchant_name IS NULL AND LOWER(name) = LOWER($4)`,
+      [categoryId ?? null, flow ?? null, userId, txName],
+    );
+  }
+
+  return result.rowCount ?? 0;
+}
+
+export async function deleteTransaction(userId: string, transactionId: string): Promise<void> {
+  const result = await pool.query(
+    `DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND source = 'plaid'`,
+    [transactionId, userId],
+  );
+  if ((result.rowCount ?? 0) === 0) {
+    throw new AppError(404, "Transaction not found");
+  }
 }
 
 export async function clearStoredBankState(userId: string): Promise<void> {

@@ -46,7 +46,7 @@
 </script>
 
 <nav
-  class="fixed inset-x-0 bottom-0 z-40 border-t border-[#252a3a] bg-[#10131b]/95 px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
+  class="fixed inset-x-0 bottom-0 z-40 border-t border-wf-border bg-wf-sidebar px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
   aria-label="Mobile navigation"
 >
   <div class="grid grid-cols-5 gap-1">
@@ -55,8 +55,8 @@
         href={item.path}
         class="flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors
         {(item.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.path))
-          ? 'bg-[#1c2030] text-slate-100 border border-[#252a3a]'
-          : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-100'}"
+          ? 'bg-wf-surface2 text-wf-text border border-wf-border'
+          : 'text-wf-muted1 hover:bg-wf-surface2 hover:text-wf-text'}"
       >
         <item.icon class="h-4 w-4" />
         <span>{item.label}</span>
@@ -66,9 +66,9 @@
 </nav>
 
 <aside
-  class="hidden md:sticky md:top-0 md:flex md:h-screen md:w-72 md:shrink-0 md:flex-col md:border-r md:border-[#252a3a] md:bg-[#10131b]"
+  class="hidden md:sticky md:top-0 md:flex md:h-screen md:w-72 md:shrink-0 md:flex-col md:bg-wf-sidebar md:[box-shadow:1px_0_0_0_var(--wf-border)]"
 >
-  <div class="flex items-center gap-2.5 border-b border-[#252a3a] px-5 py-4">
+  <div class="flex items-center gap-2.5 border-b border-wf-border px-5 py-4">
     <div class="grid h-8 w-8 place-items-center rounded-lg bg-[#5b8dee]">
       <LineChart class="h-4 w-4 text-white" />
     </div>
@@ -81,8 +81,8 @@
         href={item.path}
         class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors
         {(item.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.path))
-          ? 'bg-[#1c2030] text-slate-100 border border-[#252a3a]'
-          : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-100'}"
+          ? 'bg-wf-surface2 text-wf-text border border-wf-border'
+          : 'text-wf-muted1 hover:bg-wf-surface2 hover:text-wf-text'}"
       >
         <item.icon class="h-4 w-4" />
         {item.label}
@@ -91,7 +91,7 @@
   </nav>
 
   <div class="mt-auto p-4">
-    <div class="mb-3 rounded-xl border border-[#252a3a] bg-[#13161e] p-4">
+    <div class="mb-3 rounded-xl border border-wf-border bg-wf-surface p-4">
       <Label for="desktop-theme">Theme</Label>
       <Select id="desktop-theme" class="mt-2" value={$theme} onchange={handleThemeChange}>
         {#each themeOptions as option}
@@ -100,7 +100,7 @@
       </Select>
     </div>
 
-    <div class="rounded-xl border border-[#252a3a] bg-[#13161e] p-4">
+    <div class="rounded-xl border border-wf-border bg-wf-surface p-4">
       <p class="text-xs uppercase tracking-wider text-slate-500">Monthly Surplus</p>
       <p class="mt-1 font-display text-2xl font-semibold {monthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
         {fmt(monthlySurplus)}
@@ -108,7 +108,7 @@
       <p class="mt-1 text-xs text-slate-500">Positive cash flow accelerates compounding.</p>
     </div>
 
-    <div class="mt-3 rounded-xl border border-[#252a3a] bg-[#13161e] p-4">
+    <div class="mt-3 rounded-xl border border-wf-border bg-wf-surface p-4">
       <p class="text-xs text-slate-500 mb-2">{$authState.user?.email ?? "Signed in"}</p>
       <Button class="w-full" variant="outline" onclick={handleLogout} disabled={$authState.loading}>Sign out</Button>
     </div>

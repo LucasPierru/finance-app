@@ -1,8 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap");
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
+@plugin "@tailwindcss/forms";
 
 @layer base {
   :root,
@@ -206,5 +206,38 @@
   }
   .font-display {
     font-family: "Bricolage Grotesque", sans-serif;
+  }
+
+  /* Semantic theme-aware utilities — use these for any element that needs
+     to respond to theme changes, especially with responsive/hover prefixes */
+  .bg-wf-bg {
+    background-color: var(--wf-bg);
+  }
+  .bg-wf-sidebar {
+    background-color: var(--wf-sidebar);
+  }
+  .bg-wf-surface {
+    background-color: var(--wf-surface);
+  }
+  .bg-wf-surface2 {
+    background-color: var(--wf-surface-2);
+  }
+  .border-wf-border {
+    border-color: var(--wf-border);
+  }
+  .text-wf-text {
+    color: var(--wf-text);
+  }
+  .text-wf-text2 {
+    color: var(--wf-text-2);
+  }
+  .text-wf-muted1 {
+    color: var(--wf-muted-1);
+  }
+  .text-wf-muted2 {
+    color: var(--wf-muted-2);
+  }
+  .bg-wf-accent {
+    background-color: var(--wf-accent);
   }
 }

@@ -30,6 +30,7 @@
     amount: number;
     flow: "income" | "expense";
     source: "bank" | "manual";
+    isTransfer: boolean;
   }
 
   interface MonthlyTransactionGroup {
@@ -118,6 +119,7 @@
           amount: Math.abs(tx.amount),
           flow: tx.flow,
           source: "bank" as const,
+          isTransfer: tx.isTransfer,
         }))
         .sort((a, b) => b.dateValue.localeCompare(a.dateValue));
     }
@@ -135,6 +137,7 @@
       amount: Math.abs(cost.amount),
       flow: "expense" as const,
       source: "manual" as const,
+      isTransfer: false,
     }));
 
     const manualRevenues = financeView.revenues.map((revenue) => ({
@@ -147,6 +150,7 @@
       amount: Math.abs(revenue.amount),
       flow: "income" as const,
       source: "manual" as const,
+      isTransfer: false,
     }));
 
     return [...manualCosts, ...manualRevenues];
@@ -191,7 +195,7 @@
     const byDay = new Map<string, number>();
 
     for (const item of sourceTransactions) {
-      if (item.flow !== "expense") continue;
+      if (item.flow !== "expense" || item.isTransfer) continue;
       const parsed = parseLocalCalendarDate(item.dateValue);
       if (!parsed) continue;
       if (getMonthKey(parsed) !== currentMonthKey) continue;
@@ -212,12 +216,23 @@
   );
 
   const selectedMonthExpenseBreakdown = $derived.by(() => {
+    // Prefer the authoritative server-side breakdown (transfer-excluded, all pages)
+    const breakdown = page.data.pagedTransactions?.summary.categoryBreakdown as
+      | Array<{ category: string; totalAmount: number }>
+      | undefined;
+    if (breakdown && breakdown.length > 0) {
+      return {
+        labels: breakdown.map((e) => e.category),
+        values: breakdown.map((e) => e.totalAmount),
+        total: page.data.pagedTransactions!.summary.totalExpenses,
+      };
+    }
+    // Fallback: derive from client-side bank state data
     const byCategory = new Map<string, number>();
     for (const item of selectedMonthItems) {
-      if (item.flow !== "expense") continue;
+      if (item.flow !== "expense" || item.isTransfer) continue;
       byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + Math.abs(item.amount));
     }
-
     const entries = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
     return {
       labels: entries.map(([category]) => category),
@@ -231,7 +246,15 @@
   );
 
   const selectedMonthRevenueTotal = $derived(
-    selectedMonthItems.filter((item) => item.flow === "income").reduce((sum, item) => sum + item.amount, 0),
+    // Prefer server-side summary (transfer-excluded, full month)
+    page.data.pagedTransactions?.summary.totalIncome ??
+      selectedMonthItems
+        .filter((item) => item.flow === "income" && !item.isTransfer)
+        .reduce((sum, item) => sum + item.amount, 0),
+  );
+
+  const selectedMonthTransferCount = $derived(
+    page.data.pagedTransactions?.summary.transferCount ?? selectedMonthItems.filter((item) => item.isTransfer).length,
   );
 
   const selectedMonthDelta = $derived(selectedMonthRevenueTotal - selectedMonthExpenseBreakdown.total);
@@ -240,13 +263,27 @@
     const match = /^(\d{4})-(\d{2})$/.exec(selectedMonthKeyOrCurrent);
     const daysCount = match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 31;
     const days = new Array(daysCount).fill(0) as number[];
-    for (const item of selectedMonthItems) {
-      if (item.flow !== "expense") continue;
-      const parsed = parseLocalCalendarDate(item.dateValue);
-      if (!parsed) continue;
-      const idx = parsed.getDate() - 1;
-      if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+
+    // Use server-side daily breakdown when available (authoritative, transfer-excluded, full month)
+    const serverDaily = page.data.pagedTransactions?.summary.dailyExpenseBreakdown;
+    if (serverDaily && serverDaily.length > 0) {
+      for (const entry of serverDaily) {
+        const d = parseLocalCalendarDate(entry.date);
+        if (!d) continue;
+        const idx = d.getDate() - 1;
+        if (idx >= 0 && idx < days.length) days[idx] += entry.totalAmount;
+      }
+    } else {
+      // Fallback: client-side bank state data
+      for (const item of selectedMonthItems) {
+        if (item.flow !== "expense" || item.isTransfer) continue;
+        const parsed = parseLocalCalendarDate(item.dateValue);
+        if (!parsed) continue;
+        const idx = parsed.getDate() - 1;
+        if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+      }
     }
+
     return {
       labels: Array.from({ length: daysCount }, (_, i) => String(i + 1)),
       values: days,
@@ -267,7 +304,7 @@
     const daysCount = match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 30;
     const days = new Array(daysCount).fill(0) as number[];
     for (const item of priorMonthItems) {
-      if (item.flow !== "expense") continue;
+      if (item.flow !== "expense" || item.isTransfer) continue;
       const parsed = parseLocalCalendarDate(item.dateValue);
       if (!parsed) continue;
       const idx = parsed.getDate() - 1;
@@ -293,6 +330,7 @@
         amount: Math.abs(tx.amount),
         flow: cat.flow,
         source: "bank" as const,
+        isTransfer: cat.isTransfer,
       };
     });
   });
@@ -363,6 +401,12 @@
               </p>
             </div>
           </div>
+          {#if selectedMonthTransferCount > 0}
+            <div class="border-t border-[#2a3247] px-4 py-2 text-xs text-slate-500">
+              <span class="text-amber-500/80">⚠</span>
+              {selectedMonthTransferCount} transfer{selectedMonthTransferCount === 1 ? "" : "s"} excluded from totals.
+            </div>
+          {/if}
         </div>
         <ExpenseDonutSummary
           labels={selectedMonthExpenseBreakdown.labels}
@@ -412,6 +456,13 @@
           </p>
         </div>
       </div>
+      {#if selectedMonthTransferCount > 0}
+        <div class="border-t border-[#2a3247] px-6 py-2.5 text-xs text-slate-500">
+          <span class="text-amber-500/80">⚠</span>
+          {selectedMonthTransferCount} internal transfer{selectedMonthTransferCount === 1 ? "" : "s"} detected (credit card
+          payments, account transfers) and excluded from totals.
+        </div>
+      {/if}
     </div>
 
     <div class="col-span-3">

@@ -91,6 +91,8 @@ export interface BankTransaction {
 export interface UpdateTransactionBody {
   categoryId?: string | null;
   flow?: 'income' | 'expense';
+  /** When true, apply the same category/flow to all transactions with the same merchant name (or transaction name if no merchant). */
+  applyToSimilar?: boolean;
 }
 
 export interface BankConnectionState {
@@ -128,6 +130,9 @@ export interface PagedTransactionsResult {
   summary: {
     totalIncome: number;
     totalExpenses: number;
+    transferCount: number;
+    categoryBreakdown: Array<{ category: string; totalAmount: number }>;
+    dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
   };
 }
 

@@ -104,6 +104,10 @@
     goto(page.url, { replaceState: true, invalidateAll: true });
   }
 
+  function handleTransactionDeleted(_transactionId: string) {
+    goto(page.url, { replaceState: true, invalidateAll: true });
+  }
+
   onMount(() => {
     hydrateFinanceState(page.data.initialFinanceState);
     searchInput = filters.search;
@@ -177,5 +181,6 @@
     onFilterChange={(patch) => navigate(patch)}
     onSearchInput={handleSearchInput}
     onTransactionUpdated={handleTransactionUpdated}
+    onTransactionDeleted={handleTransactionDeleted}
   />
 </div>
