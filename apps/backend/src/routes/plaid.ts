@@ -9,7 +9,7 @@ import {
   deleteTransaction,
   getBankConnectionState,
   getPagedTransactions,
-  getStoredBankState,
+  getStoredBankStates,
   updateTransactionOverride,
   bulkUpdateTransactionsByMerchant,
   upsertStoredBankState,
@@ -273,13 +273,8 @@ plaidRouter.post("/exchange-public-token", async (req: Request<Record<string, st
       pruneMissingTransactions: true,
     });
 
-    res.json({
-      connected: true,
-      institutionName: state.institutionName,
-      lastSyncAt: state.lastSyncAt,
-      accounts: state.accounts,
-      recentTransactions: state.transactions.slice(0, 200),
-    });
+    const connectionState = await getBankConnectionState(getAuthenticatedUser(req).userId);
+    res.json(connectionState);
   } catch (error) {
     next(error);
   }
@@ -288,34 +283,34 @@ plaidRouter.post("/exchange-public-token", async (req: Request<Record<string, st
 plaidRouter.post("/sync", async (req, res, next) => {
   try {
     assertPlaidConfigured();
-    const state = await getStoredBankState(getAuthenticatedUser(req).userId);
+    const { userId } = getAuthenticatedUser(req);
+    const states = await getStoredBankStates(userId);
 
-    if (!state) {
+    if (states.length === 0) {
       res.status(400).json({ message: "No bank account connected" });
       return;
     }
 
-    const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
-    await upsertStoredBankState(getAuthenticatedUser(req).userId, nextState, {
-      removedTransactionIds,
-      pruneMissingAccounts: true,
-    });
+    for (const state of states) {
+      const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
+      await upsertStoredBankState(userId, nextState, {
+        removedTransactionIds,
+        pruneMissingAccounts: true,
+      });
+    }
 
-    res.json({
-      connected: true,
-      institutionName: nextState.institutionName,
-      accounts: nextState.accounts,
-      recentTransactions: nextState.transactions.slice(0, 200),
-      lastSyncAt: nextState.lastSyncAt,
-    });
+    const connectionState = await getBankConnectionState(userId);
+    res.json(connectionState);
   } catch (error) {
     next(error);
   }
 });
 
-plaidRouter.delete("/connection", async (req, res, next) => {
+plaidRouter.delete("/connection", async (req: Request<Record<string, string>, object, object, Record<string, string>>, res, next) => {
   try {
-    await clearStoredBankState(getAuthenticatedUser(req).userId);
+    const { userId } = getAuthenticatedUser(req);
+    const itemId = req.query.itemId?.trim() || undefined;
+    await clearStoredBankState(userId, itemId);
     res.json({ connected: false });
   } catch (error) {
     next(error);

@@ -1,7 +1,7 @@
 import { pool } from "@db/pool";
 import { serverEnv } from "@config/env";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "@lib/plaid-token-crypto";
-import type { BankAccount, BankConnectionState, BankTransaction, StoredBankState } from "@lib/types";
+import type { BankAccount, BankConnectionState, BankTransaction, PlaidConnection, StoredBankState } from "@lib/types";
 import type { TransactionFilters, PagedTransactionsResult } from "@finance-app/shared-types";
 import { AppError } from "@lib/errors";
 
@@ -38,25 +38,26 @@ function mapTransactionRow(row: Record<string, unknown>): BankTransaction {
   };
 }
 
-export async function getStoredBankState(userId: string): Promise<StoredBankState | null> {
-  const itemResult = await pool.query(
+/** Returns all stored Plaid items for a user (one per connected bank). */
+export async function getStoredBankStates(userId: string): Promise<StoredBankState[]> {
+  const itemsResult = await pool.query(
     `SELECT access_token, item_id, institution_name, cursor, last_sync_at
      FROM plaid_items
      WHERE user_id = $1`,
     [userId],
   );
 
-  if (itemResult.rowCount === 0) {
-    return null;
-  }
+  if (itemsResult.rowCount === 0) return [];
+
+  const itemIds = itemsResult.rows.map((r) => String(r.item_id));
 
   const [accountsResult, transactionsResult] = await Promise.all([
     pool.query(
-      `SELECT account_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code
+      `SELECT account_id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code
        FROM plaid_accounts
-       WHERE user_id = $1
+       WHERE item_id = ANY($1::text[])
        ORDER BY name ASC`,
-      [userId],
+      [itemIds],
     ),
     pool.query(
       `SELECT id, account_id, date, name, merchant_name, amount, iso_currency_code, plaid_category, pending,
@@ -69,27 +70,118 @@ export async function getStoredBankState(userId: string): Promise<StoredBankStat
     ),
   ]);
 
-  const item = itemResult.rows[0];
-  return {
-    accessToken: decryptPlaidAccessToken(String(item.access_token), serverEnv.plaidTokenEncryptionSecret),
-    itemId: String(item.item_id),
-    institutionName: item.institution_name ? String(item.institution_name) : null,
-    cursor: item.cursor ? String(item.cursor) : null,
-    lastSyncAt: item.last_sync_at ? new Date(String(item.last_sync_at)).toISOString() : null,
-    accounts: accountsResult.rows.map(mapAccountRow),
-    transactions: transactionsResult.rows.map(mapTransactionRow),
-  };
+  // Group accounts by item_id
+  const accountsByItemId = new Map<string, BankAccount[]>();
+  const accountIdToItemId = new Map<string, string>();
+  for (const row of accountsResult.rows) {
+    const itemId = String(row.item_id);
+    const account = mapAccountRow(row);
+    const list = accountsByItemId.get(itemId) ?? [];
+    list.push(account);
+    accountsByItemId.set(itemId, list);
+    accountIdToItemId.set(account.accountId, itemId);
+  }
+
+  // Group transactions by item_id (via account_id)
+  const transactionsByItemId = new Map<string, BankTransaction[]>();
+  for (const row of transactionsResult.rows) {
+    const tx = mapTransactionRow(row);
+    const itemId = accountIdToItemId.get(tx.accountId);
+    if (!itemId) continue;
+    const list = transactionsByItemId.get(itemId) ?? [];
+    list.push(tx);
+    transactionsByItemId.set(itemId, list);
+  }
+
+  return itemsResult.rows.map((item) => {
+    const itemId = String(item.item_id);
+    return {
+      accessToken: decryptPlaidAccessToken(String(item.access_token), serverEnv.plaidTokenEncryptionSecret),
+      itemId,
+      institutionName: item.institution_name ? String(item.institution_name) : null,
+      cursor: item.cursor ? String(item.cursor) : null,
+      lastSyncAt: item.last_sync_at ? new Date(String(item.last_sync_at)).toISOString() : null,
+      accounts: accountsByItemId.get(itemId) ?? [],
+      transactions: transactionsByItemId.get(itemId) ?? [],
+    };
+  });
 }
 
 export async function getBankConnectionState(userId: string): Promise<BankConnectionState> {
-  const state = await getStoredBankState(userId);
+  const itemsResult = await pool.query(
+    `SELECT item_id, institution_name, last_sync_at
+     FROM plaid_items
+     WHERE user_id = $1
+     ORDER BY last_sync_at DESC NULLS LAST`,
+    [userId],
+  );
+
+  if (itemsResult.rowCount === 0) {
+    return {
+      connected: false,
+      connections: [],
+      institutionName: null,
+      lastSyncAt: null,
+      accounts: [],
+      recentTransactions: [],
+    };
+  }
+
+  const itemIds = itemsResult.rows.map((r) => String(r.item_id));
+
+  const [accountsResult, transactionsResult] = await Promise.all([
+    pool.query(
+      `SELECT account_id, item_id, name, official_name, mask, type, subtype, current_balance, available_balance, iso_currency_code
+       FROM plaid_accounts
+       WHERE item_id = ANY($1::text[])
+       ORDER BY name ASC`,
+      [itemIds],
+    ),
+    pool.query(
+      `SELECT id, account_id, date, name, merchant_name, amount, iso_currency_code, plaid_category, pending,
+              category_id, flow,
+              (SELECT name FROM categories WHERE id = t.category_id) AS category_name
+       FROM transactions t
+       WHERE user_id = $1 AND source = 'plaid'
+       ORDER BY date DESC, id DESC
+       LIMIT 200`,
+      [userId],
+    ),
+  ]);
+
+  // Group accounts by item_id
+  const accountsByItemId = new Map<string, BankAccount[]>();
+  const allAccounts: BankAccount[] = [];
+  for (const row of accountsResult.rows) {
+    const itemId = String(row.item_id);
+    const account = mapAccountRow(row);
+    const list = accountsByItemId.get(itemId) ?? [];
+    list.push(account);
+    accountsByItemId.set(itemId, list);
+    allAccounts.push(account);
+  }
+
+  const connections: PlaidConnection[] = itemsResult.rows.map((item) => ({
+    itemId: String(item.item_id),
+    institutionName: item.institution_name ? String(item.institution_name) : null,
+    lastSyncAt: item.last_sync_at ? new Date(String(item.last_sync_at)).toISOString() : null,
+    accounts: accountsByItemId.get(String(item.item_id)) ?? [],
+  }));
+
+  const latestSyncAt =
+    connections
+      .map((c) => c.lastSyncAt)
+      .filter((d): d is string => d !== null)
+      .sort()
+      .at(-1) ?? null;
 
   return {
-    connected: Boolean(state),
-    institutionName: state?.institutionName ?? null,
-    lastSyncAt: state?.lastSyncAt ?? null,
-    accounts: state?.accounts ?? [],
-    recentTransactions: state?.transactions.slice(0, 200) ?? [],
+    connected: true,
+    connections,
+    institutionName: connections[0]?.institutionName ?? null,
+    lastSyncAt: latestSyncAt,
+    accounts: allAccounts,
+    recentTransactions: transactionsResult.rows.map(mapTransactionRow),
   };
 }
 
@@ -168,7 +260,8 @@ export async function getPagedTransactions(
       `SELECT
          COALESCE(SUM(CASE WHEN t.flow = 'income'  AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_income,
          COALESCE(SUM(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_expenses,
-         COUNT(CASE WHEN ${isTransfer} THEN 1 END) AS transfer_count
+         COUNT(CASE WHEN ${isTransfer} THEN 1 END) AS transfer_count,
+         COUNT(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN 1 END) AS expense_count
        FROM transactions t WHERE ${where}`,
       summaryParams,
     ),
@@ -212,6 +305,7 @@ export async function getPagedTransactions(
       totalIncome: Number(summaryRow.total_income),
       totalExpenses: Number(summaryRow.total_expenses),
       transferCount: Number(summaryRow.transfer_count),
+      expenseTransactionCount: Number(summaryRow.expense_count),
       categoryBreakdown: breakdownResult.rows.map((r) => ({
         category: String(r.category),
         totalAmount: Number(r.total_amount),
@@ -245,15 +339,14 @@ export async function upsertStoredBankState(
     await client.query("BEGIN");
 
     await client.query(
-      `INSERT INTO plaid_items (user_id, access_token, item_id, institution_name, cursor, last_sync_at)
+      `INSERT INTO plaid_items (item_id, user_id, access_token, institution_name, cursor, last_sync_at)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (user_id) DO UPDATE SET
+       ON CONFLICT (item_id) DO UPDATE SET
          access_token = EXCLUDED.access_token,
-         item_id = EXCLUDED.item_id,
          institution_name = EXCLUDED.institution_name,
          cursor = EXCLUDED.cursor,
          last_sync_at = EXCLUDED.last_sync_at`,
-      [userId, encryptedAccessToken, state.itemId, state.institutionName, state.cursor, state.lastSyncAt],
+      [state.itemId, userId, encryptedAccessToken, state.institutionName, state.cursor, state.lastSyncAt],
     );
 
     for (const account of state.accounts) {
@@ -261,6 +354,7 @@ export async function upsertStoredBankState(
         `INSERT INTO plaid_accounts (
           account_id,
           user_id,
+          item_id,
           name,
           official_name,
           mask,
@@ -269,9 +363,10 @@ export async function upsertStoredBankState(
           current_balance,
           available_balance,
           iso_currency_code
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (account_id) DO UPDATE SET
           user_id = EXCLUDED.user_id,
+          item_id = EXCLUDED.item_id,
           name = EXCLUDED.name,
           official_name = EXCLUDED.official_name,
           mask = EXCLUDED.mask,
@@ -283,6 +378,7 @@ export async function upsertStoredBankState(
         [
           account.accountId,
           userId,
+          state.itemId,
           account.name,
           account.officialName,
           account.mask,
@@ -297,13 +393,13 @@ export async function upsertStoredBankState(
 
     if (options.pruneMissingAccounts) {
       if (accountIds.length === 0) {
-        await client.query(`DELETE FROM plaid_accounts WHERE user_id = $1`, [userId]);
+        await client.query(`DELETE FROM plaid_accounts WHERE item_id = $1`, [state.itemId]);
       } else {
         await client.query(
           `DELETE FROM plaid_accounts
-           WHERE user_id = $1
+           WHERE item_id = $1
              AND NOT (account_id = ANY($2::text[]))`,
-          [userId, accountIds],
+          [state.itemId, accountIds],
         );
       }
     }
@@ -362,14 +458,21 @@ export async function upsertStoredBankState(
     }
 
     if (options.pruneMissingTransactions) {
-      if (transactionIds.length === 0) {
-        await client.query(`DELETE FROM transactions WHERE user_id = $1 AND source = 'plaid'`, [userId]);
+      // Only prune transactions that belong to accounts of this specific item,
+      // so we don't touch transactions from other connected banks.
+      if (accountIds.length === 0) {
+        await client.query(
+          `DELETE FROM transactions WHERE user_id = $1 AND source = 'plaid'
+             AND account_id IN (SELECT account_id FROM plaid_accounts WHERE item_id = $2)`,
+          [userId, state.itemId],
+        );
       } else {
         await client.query(
           `DELETE FROM transactions
            WHERE user_id = $1 AND source = 'plaid'
-             AND NOT (id = ANY($2::text[]))`,
-          [userId, transactionIds],
+             AND account_id = ANY($2::text[])
+             AND NOT (id = ANY($3::text[]))`,
+          [userId, accountIds, transactionIds],
         );
       }
     }
@@ -464,14 +567,38 @@ export async function deleteTransaction(userId: string, transactionId: string): 
   }
 }
 
-export async function clearStoredBankState(userId: string): Promise<void> {
+/**
+ * Disconnect a specific bank item (itemId provided) or all items for the user.
+ * Transactions for the removed item's accounts are also deleted.
+ */
+export async function clearStoredBankState(userId: string, itemId?: string): Promise<void> {
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
-    await client.query(`DELETE FROM plaid_accounts WHERE user_id = $1`, [userId]);
-    await client.query(`DELETE FROM transactions WHERE user_id = $1 AND source = 'plaid'`, [userId]);
-    await client.query(`DELETE FROM plaid_items WHERE user_id = $1`, [userId]);
+
+    if (itemId) {
+      // Collect account IDs so we can delete the matching transactions.
+      const accountsResult = await client.query(
+        `SELECT account_id FROM plaid_accounts WHERE item_id = $1`,
+        [itemId],
+      );
+      const accountIds = accountsResult.rows.map((r: Record<string, unknown>) => String(r.account_id));
+
+      if (accountIds.length > 0) {
+        await client.query(
+          `DELETE FROM transactions WHERE user_id = $1 AND source = 'plaid' AND account_id = ANY($2::text[])`,
+          [userId, accountIds],
+        );
+      }
+      // plaid_accounts rows cascade from plaid_items via FK.
+      await client.query(`DELETE FROM plaid_items WHERE item_id = $1 AND user_id = $2`, [itemId, userId]);
+    } else {
+      // Remove everything for this user.
+      await client.query(`DELETE FROM transactions WHERE user_id = $1 AND source = 'plaid'`, [userId]);
+      await client.query(`DELETE FROM plaid_items WHERE user_id = $1`, [userId]);
+    }
+
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

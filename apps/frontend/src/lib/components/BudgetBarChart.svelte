@@ -20,7 +20,7 @@
     costs: FinanceItem[];
   } = $props();
 
-  let barCanvas: HTMLCanvasElement | undefined;
+  let barCanvas: HTMLCanvasElement | undefined = $state();
   let barChart: ChartInstance | undefined;
   let mounted = $state(false);
 

@@ -5,6 +5,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Select } from "$lib/components/ui/select";
   import { apiRequest } from "$lib/api/client";
+  import { untrack } from "svelte";
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
 
   type Period = "weekly" | "monthly" | "yearly";
@@ -32,17 +33,19 @@
 
   const isEditing = $derived(editPlan !== undefined);
 
-  let planName = $state(editPlan?.name ?? "");
-  let nextKey = $state(editPlan ? editPlan.items.length : 1);
+  let planName = $state(untrack(() => editPlan?.name ?? ""));
+  let nextKey = $state(untrack(() => (editPlan ? editPlan.items.length : 1)));
   let items = $state<ItemDraft[]>(
-    editPlan && editPlan.items.length > 0
-      ? editPlan.items.map((item, i) => ({
-          key: i,
-          categoryId: item.categoryId ?? "",
-          amount: String(item.amount),
-          period: item.period as Period,
-        }))
-      : [{ key: 0, categoryId: "", amount: "", period: "monthly" }],
+    untrack(() =>
+      editPlan && editPlan.items.length > 0
+        ? editPlan.items.map((item, i) => ({
+            key: i,
+            categoryId: item.categoryId ?? "",
+            amount: String(item.amount),
+            period: item.period as Period,
+          }))
+        : [{ key: 0, categoryId: "", amount: "", period: "monthly" }],
+    ),
   );
   let error = $state<string | null>(null);
   let submitting = $state(false);

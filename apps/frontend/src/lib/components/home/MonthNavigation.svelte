@@ -4,6 +4,8 @@
   import { ChevronLeft, ChevronRight } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import { Card } from "../ui/card";
+  import { page } from "$app/state";
+  import { goto } from "$app/navigation";
 
   let {
     value = $bindable<string>(),
@@ -12,6 +14,15 @@
     value?: string;
     onchange?: (month: string) => void;
   } = $props();
+
+  // When used without props, fall back to reading from / writing to the URL.
+  const effectiveValue = $derived.by(() => {
+    if (value !== undefined) return value;
+    const fromUrl = page.url.searchParams.get("month");
+    if (fromUrl) return fromUrl;
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   function parseMonthKey(key: string): { year: number; month: number } | null {
     const match = /^(\d{4})-(\d{2})$/.exec(key);
@@ -29,12 +40,21 @@
   }
 
   const currentMonthObj = $derived.by(() => {
-    if (!value) {
-      const today = new Date();
-      return { year: today.getFullYear(), month: today.getMonth() + 1 };
-    }
-    return parseMonthKey(value) ?? { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+    return parseMonthKey(effectiveValue) ?? { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
   });
+
+  function navigate(next: string) {
+    if (onchange) {
+      onchange(next);
+    } else if (value !== undefined) {
+      value = next;
+    } else {
+      const params = new URLSearchParams(page.url.searchParams);
+      params.set("month", next);
+      params.delete("page");
+      goto(`?${params}`);
+    }
+  }
 
   const monthLabel = $derived(formatMonthLabel(currentMonthObj.year, currentMonthObj.month));
 
@@ -45,9 +65,7 @@
       month = 12;
       year -= 1;
     }
-    const next = formatMonthKey(year, month);
-    if (onchange) onchange(next);
-    else value = next;
+    navigate(formatMonthKey(year, month));
   }
 
   function nextMonth() {
@@ -71,9 +89,7 @@
       year = currentYear;
     }
 
-    const next = formatMonthKey(year, month);
-    if (onchange) onchange(next);
-    else value = next;
+    navigate(formatMonthKey(year, month));
   }
 
   const isAtCurrentMonth = $derived.by(() => {

@@ -1,22 +1,23 @@
-<svelte:options runes={true} />
-
 <script lang="ts">
+  import type { BudgetPlan, BankTransaction } from "@finance-app/shared-types";
   import { page } from "$app/state";
-  import { goto } from "$app/navigation";
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
   import ExpenseTrendChart from "$lib/components/home/ExpenseTrendChart.svelte";
   import ExpenseDonutSummary from "$lib/components/home/ExpenseDonutSummary.svelte";
   import TransactionList from "$lib/components/home/TransactionList.svelte";
+  import Pagination from "$lib/components/Pagination.svelte";
   import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
-  import { Button } from "$lib/components/ui/button";
+  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
   import {
     emptyBankState,
     emptyFinanceState,
     getEffectiveFinanceView,
     categorizeBankTransaction,
   } from "$lib/utils/finance-view";
+  import { parseLocalCalendarDate, getMonthKey, formatMonthLabelFromKey, formatDateLabel } from "$lib/utils/date";
+  import { formatCurrency } from "$lib/utils/format";
 
   type HomeTab = "overview" | "expenses" | "transactions";
 
@@ -45,7 +46,10 @@
     { id: "transactions", label: "Transactions" },
   ];
 
-  let activeTab = $state<HomeTab>("overview");
+  const activeTab = $derived.by<HomeTab>(() => {
+    const tab = page.url.searchParams.get("tab");
+    return tab === "expenses" || tab === "transactions" ? tab : "overview";
+  });
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
@@ -53,58 +57,7 @@
   const budgetPlans = $derived(page.data.budgetPlans ?? []);
 
   let budgetPlanId = $state<string | null>(null);
-  const budgetPlan = $derived(
-    budgetPlans.find((p: import("@finance-app/shared-types").BudgetPlan) => p.id === budgetPlanId) ??
-      budgetPlans[0] ??
-      null,
-  );
-
-  $effect(() => {
-    if (
-      budgetPlans.length > 0 &&
-      (budgetPlanId === null ||
-        !budgetPlans.find((p: import("@finance-app/shared-types").BudgetPlan) => p.id === budgetPlanId))
-    ) {
-      budgetPlanId = budgetPlans[0].id;
-    }
-  });
-
-  function formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  }
-
-  function parseLocalCalendarDate(dateValue: string): Date | null {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue.trim());
-    if (!match) return null;
-
-    const year = Number(match[1]);
-    const monthIndex = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    const date = new Date(year, monthIndex, day);
-
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  }
-
-  function getMonthKey(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-
-  function formatMonthLabelFromKey(key: string): string {
-    const date = parseLocalCalendarDate(`${key}-01`);
-    if (!date) return "Current month";
-    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  }
-
-  function formatDateLabel(dateValue: string): string {
-    const parsed = parseLocalCalendarDate(dateValue);
-    if (!parsed) return dateValue;
-    return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  }
+  const budgetPlan = $derived(budgetPlans.find((p: BudgetPlan) => p.id === budgetPlanId) ?? budgetPlans[0] ?? null);
 
   function buildSourceTransactions(): DisplayTransaction[] {
     if (financeView.categorizedBankTransactions.length > 0) {
@@ -191,30 +144,6 @@
 
   const selectedMonthLabel = $derived(formatMonthLabelFromKey(selectedMonthKeyOrCurrent));
 
-  const currentMonthDailyExpenseTrend = $derived.by(() => {
-    const byDay = new Map<string, number>();
-
-    for (const item of sourceTransactions) {
-      if (item.flow !== "expense" || item.isTransfer) continue;
-      const parsed = parseLocalCalendarDate(item.dateValue);
-      if (!parsed) continue;
-      if (getMonthKey(parsed) !== currentMonthKey) continue;
-
-      const key = item.dateValue;
-      byDay.set(key, (byDay.get(key) ?? 0) + Math.abs(item.amount));
-    }
-
-    const entries = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    return {
-      labels: entries.map(([date]) => formatDateLabel(date)),
-      values: entries.map(([, amount]) => amount),
-    };
-  });
-
-  const currentMonthExpenseTotal = $derived(
-    currentMonthDailyExpenseTrend.values.reduce((sum, value) => sum + value, 0),
-  );
-
   const selectedMonthExpenseBreakdown = $derived.by(() => {
     // Prefer the authoritative server-side breakdown (transfer-excluded, all pages)
     const breakdown = page.data.pagedTransactions?.summary.categoryBreakdown as
@@ -242,7 +171,7 @@
   });
 
   const selectedMonthExpenseTransactionCount = $derived(
-    selectedMonthItems.filter((item) => item.flow === "expense").length,
+    page.data.pagedTransactions?.total ?? selectedMonthItems.filter((item) => item.flow === "expense").length,
   );
 
   const selectedMonthRevenueTotal = $derived(
@@ -303,13 +232,26 @@
     const match = /^(\d{4})-(\d{2})$/.exec(priorMonthKey);
     const daysCount = match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 30;
     const days = new Array(daysCount).fill(0) as number[];
-    for (const item of priorMonthItems) {
-      if (item.flow !== "expense" || item.isTransfer) continue;
-      const parsed = parseLocalCalendarDate(item.dateValue);
-      if (!parsed) continue;
-      const idx = parsed.getDate() - 1;
-      if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+
+    // Prefer server-side daily breakdown (authoritative, transfer-excluded, full month)
+    const serverDaily = page.data.priorMonthTransactions?.summary.dailyExpenseBreakdown;
+    if (serverDaily && serverDaily.length > 0) {
+      for (const entry of serverDaily) {
+        const d = parseLocalCalendarDate(entry.date);
+        if (!d) continue;
+        const idx = d.getDate() - 1;
+        if (idx >= 0 && idx < days.length) days[idx] += entry.totalAmount;
+      }
+    } else {
+      for (const item of priorMonthItems) {
+        if (item.flow !== "expense" || item.isTransfer) continue;
+        const parsed = parseLocalCalendarDate(item.dateValue);
+        if (!parsed) continue;
+        const idx = parsed.getDate() - 1;
+        if (idx >= 0 && idx < days.length) days[idx] += item.amount;
+      }
     }
+
     return days;
   });
 
@@ -318,7 +260,7 @@
   const pagedDisplayTransactions = $derived.by(() => {
     const data = page.data.pagedTransactions;
     if (!data) return [];
-    return data.transactions.map((tx: import("@finance-app/shared-types").BankTransaction) => {
+    return data.transactions.map((tx: BankTransaction) => {
       const cat = categorizeBankTransaction(tx);
       return {
         id: tx.transactionId,
@@ -334,161 +276,82 @@
       };
     });
   });
-
-  function handleMonthChange(month: string) {
-    const params = new URLSearchParams(page.url.searchParams);
-    params.set("month", month);
-    params.delete("page");
-    goto(`?${params}`);
-  }
-
-  function handleTxPageChange(p: number) {
-    const params = new URLSearchParams(page.url.searchParams);
-    params.set("page", String(p));
-    goto(`?${params}`);
-  }
-
-  $effect(() => {
-    const tab = page.url.searchParams.get("tab");
-    const resolved: HomeTab = tab === "expenses" || tab === "transactions" ? tab : "overview";
-    if (activeTab !== resolved) {
-      activeTab = resolved;
-    }
-  });
 </script>
 
-<div class="animate-fade-up">
-  <!-- Mobile: tab-driven via MobileInnerNav in layout -->
-  <div class="md:hidden">
-    {#if activeTab === "overview"}
-      <div class="space-y-4">
-        <ExpenseTrendChart
-          labels={currentMonthDailyExpenseTrend.labels}
-          values={currentMonthDailyExpenseTrend.values}
-          totalLabel={`Total this month: ${formatCurrency(currentMonthExpenseTotal)}`}
-        />
-        {#if budgetPlans.length > 0}
-          <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
-          <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
-        {/if}
-        <TransactionList
-          title="Recent Transactions"
-          subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
-          items={overviewRecentTransactions}
-          pageSize={3}
-          hidePager={true}
-        />
-      </div>
-    {/if}
+<div class="animate-fade-up grid grid-cols-1 gap-4 md:grid-cols-5 md:gap-6">
+  <!-- Month Navigation: hidden on mobile overview tab, full-width otherwise -->
+  <div class="{activeTab === 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-5">
+    <MonthNavigation />
+  </div>
 
-    {#if activeTab === "expenses"}
-      <div class="space-y-4">
-        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
-        <div class="rounded-xl border border-[#2a3247] bg-[#13161e]">
-          <div class="grid grid-cols-3">
-            <div class="flex flex-col items-center px-4 py-3">
-              <p class="mb-1 text-xs font-medium text-slate-500">Revenue</p>
-              <p class="text-base font-semibold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
-            </div>
-            <div class="flex flex-col items-center px-4 py-3">
-              <p class="mb-1 text-xs font-medium text-slate-500">Expenses</p>
-              <p class="text-base font-semibold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
-            </div>
-            <div class="flex flex-col items-center px-4 py-3">
-              <p class="mb-1 text-xs font-medium text-slate-500">Net</p>
-              <p class="text-base font-semibold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-                {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
-              </p>
-            </div>
-          </div>
-          {#if selectedMonthTransferCount > 0}
-            <div class="border-t border-[#2a3247] px-4 py-2 text-xs text-slate-500">
-              <span class="text-amber-500/80">⚠</span>
-              {selectedMonthTransferCount} transfer{selectedMonthTransferCount === 1 ? "" : "s"} excluded from totals.
-            </div>
-          {/if}
-        </div>
-        <ExpenseDonutSummary
-          labels={selectedMonthExpenseBreakdown.labels}
-          values={selectedMonthExpenseBreakdown.values}
-          total={selectedMonthExpenseBreakdown.total}
-          transactionCount={selectedMonthExpenseTransactionCount}
-        />
+  <!-- Monthly Summary: mobile expenses tab only, always on desktop -->
+  <div
+    class="{activeTab !== 'expenses'
+      ? 'hidden md:block'
+      : ''} col-span-1 md:col-span-5 rounded-xl border border-[#2a3247] bg-[#13161e]"
+  >
+    <div class="grid grid-cols-3 md:divide-x md:divide-[#2a3247]">
+      <div class="flex flex-col items-center px-4 py-3 md:items-start md:px-6 md:py-5">
+        <p class="mb-1 text-xs font-medium text-slate-500 md:mb-1.5 md:uppercase md:tracking-wide">Revenue</p>
+        <p class="text-base font-semibold text-emerald-400 md:text-2xl md:font-bold">
+          {formatCurrency(selectedMonthRevenueTotal)}
+        </p>
       </div>
-    {/if}
-
-    {#if activeTab === "transactions"}
-      <div class="space-y-4">
-        <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
-        <TransactionList
-          title="All Transactions"
-          subtitle={`${selectedMonthLabel} — ${page.data.pagedTransactions?.total ?? 0} transaction${(page.data.pagedTransactions?.total ?? 0) === 1 ? "" : "s"}`}
-          items={pagedDisplayTransactions}
-          pageSize={12}
-          serverPage={page.data.txPage}
-          serverTotalPages={page.data.pagedTransactions?.totalPages ?? 1}
-          onPageChange={handleTxPageChange}
-        />
+      <div class="flex flex-col items-center px-4 py-3 md:items-start md:px-6 md:py-5">
+        <p class="mb-1 text-xs font-medium text-slate-500 md:mb-1.5 md:uppercase md:tracking-wide">Expenses</p>
+        <p class="text-base font-semibold text-rose-400 md:text-2xl md:font-bold">
+          {formatCurrency(selectedMonthExpenseBreakdown.total)}
+        </p>
+      </div>
+      <div class="flex flex-col items-center px-4 py-3 md:items-start md:px-6 md:py-5">
+        <p class="mb-1 text-xs font-medium text-slate-500 md:mb-1.5 md:uppercase md:tracking-wide">Net</p>
+        <p
+          class="text-base font-semibold {selectedMonthDelta >= 0
+            ? 'text-emerald-400'
+            : 'text-rose-400'} md:text-2xl md:font-bold"
+        >
+          {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
+        </p>
+      </div>
+    </div>
+    {#if selectedMonthTransferCount > 0}
+      <div class="border-t border-[#2a3247] px-4 py-2 text-xs text-slate-500 md:px-6 md:py-2.5">
+        <span class="text-amber-500/80">⚠</span>
+        {selectedMonthTransferCount} internal transfer{selectedMonthTransferCount === 1 ? "" : "s"} detected (credit card
+        payments, account transfers) and excluded from totals.
       </div>
     {/if}
   </div>
 
-  <!-- Desktop: all sections shown directly -->
-  <div class="hidden md:grid md:grid-cols-5 md:gap-6">
-    <div class="col-span-5">
-      <MonthNavigation value={selectedMonthKey} onchange={handleMonthChange} />
-    </div>
+  <!-- Expense Trend Chart: mobile overview tab only, col-3 on desktop -->
+  <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-3">
+    <ExpenseTrendChart
+      labels={selectedMonthDailyExpenseTrend.labels}
+      values={selectedMonthDailyExpenseTrend.values}
+      priorValues={priorMonthDailyExpenseValues}
+      totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthExpenseBreakdown.total)} spent`}
+    />
+  </div>
 
-    <div class="col-span-5 rounded-xl border border-[#2a3247] bg-[#13161e]">
-      <div class="grid grid-cols-3 divide-x divide-[#2a3247]">
-        <div class="flex flex-col px-6 py-5">
-          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Revenue</p>
-          <p class="text-2xl font-bold text-emerald-400">{formatCurrency(selectedMonthRevenueTotal)}</p>
-        </div>
-        <div class="flex flex-col px-6 py-5">
-          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Expenses</p>
-          <p class="text-2xl font-bold text-rose-400">{formatCurrency(selectedMonthExpenseBreakdown.total)}</p>
-        </div>
-        <div class="flex flex-col px-6 py-5">
-          <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Net</p>
-          <p class="text-2xl font-bold {selectedMonthDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-            {selectedMonthDelta >= 0 ? "+" : ""}{formatCurrency(selectedMonthDelta)}
-          </p>
-        </div>
-      </div>
-      {#if selectedMonthTransferCount > 0}
-        <div class="border-t border-[#2a3247] px-6 py-2.5 text-xs text-slate-500">
-          <span class="text-amber-500/80">⚠</span>
-          {selectedMonthTransferCount} internal transfer{selectedMonthTransferCount === 1 ? "" : "s"} detected (credit card
-          payments, account transfers) and excluded from totals.
-        </div>
-      {/if}
-    </div>
+  <!-- Expense Donut Summary: mobile expenses tab only, col-2 on desktop -->
+  <div class="{activeTab !== 'expenses' ? 'hidden md:block' : ''} col-span-1 md:col-span-2">
+    <ExpenseDonutSummary
+      labels={selectedMonthExpenseBreakdown.labels}
+      values={selectedMonthExpenseBreakdown.values}
+      total={selectedMonthExpenseBreakdown.total}
+      transactionCount={selectedMonthExpenseTransactionCount}
+    />
+  </div>
 
-    <div class="col-span-3">
-      <ExpenseTrendChart
-        labels={selectedMonthDailyExpenseTrend.labels}
-        values={selectedMonthDailyExpenseTrend.values}
-        priorValues={priorMonthDailyExpenseValues}
-        totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthExpenseBreakdown.total)} spent`}
-      />
-    </div>
-    <div class="col-span-2">
-      <ExpenseDonutSummary
-        labels={selectedMonthExpenseBreakdown.labels}
-        values={selectedMonthExpenseBreakdown.values}
-        total={selectedMonthExpenseBreakdown.total}
-        transactionCount={selectedMonthExpenseTransactionCount}
-      />
-    </div>
-
-    {#if budgetPlans.length > 0}
-      {#if budgetPlans.length > 1}
-        <div class="col-span-5 flex flex-wrap gap-2">
+  <!-- Budget Plans: mobile overview tab only, always on desktop -->
+  {#if budgetPlans.length > 0}
+    {#if budgetPlans.length > 1}
+      <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-5">
+        <div class="flex flex-wrap gap-2">
           {#each budgetPlans as plan (plan.id)}
             <button
               onclick={() => (budgetPlanId = plan.id)}
-              class="rounded-full px-3.5 py-1 text-sm font-medium transition-colors {budgetPlanId === plan.id
+              class="rounded-full px-3.5 py-1 text-sm font-medium transition-colors {budgetPlan?.id === plan.id
                 ? 'bg-slate-700 text-slate-100'
                 : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}"
             >
@@ -496,81 +359,86 @@
             </button>
           {/each}
         </div>
-      {/if}
-      <div class="col-span-2">
-        <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
-      </div>
-      <div class="col-span-3">
-        <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
       </div>
     {/if}
+    <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-2">
+      <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
+    </div>
+    <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-3">
+      <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
+    </div>
+  {/if}
 
-    <!-- Desktop transactions table -->
-    <Card class="col-span-5">
-      <CardHeader>
-        <CardTitle class="font-display text-xl">Transactions</CardTitle>
-        <CardDescription>
-          {selectedMonthLabel} — {page.data.pagedTransactions?.total ?? 0} transaction{(page.data.pagedTransactions
-            ?.total ?? 0) === 1
-            ? ""
-            : "s"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent class="p-0">
-        {#if pagedDisplayTransactions.length === 0}
-          <p class="px-6 py-10 text-center text-sm text-slate-500">No transactions for this period.</p>
-        {:else}
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="border-y border-[#252a3a] bg-[#1c2030]">
-                <tr>
-                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Date</th>
-                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Name</th>
-                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Merchant</th>
-                  <th class="px-5 py-3 text-left text-xs font-medium text-slate-400">Category</th>
-                  <th class="px-5 py-3 text-right text-xs font-medium text-slate-400">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each pagedDisplayTransactions as tx (tx.id)}
-                  <tr class="border-b border-[#252a3a] transition-colors hover:bg-[#1c2030]">
-                    <td class="px-5 py-3 text-slate-400">{tx.dateLabel}</td>
-                    <td class="px-5 py-3 font-medium text-slate-200">{tx.name}</td>
-                    <td class="px-5 py-3 text-slate-400">{tx.merchant}</td>
-                    <td class="px-5 py-3 text-slate-400">{tx.category}</td>
-                    <td
-                      class="px-5 py-3 text-right font-semibold {tx.flow === 'income'
-                        ? 'text-emerald-400'
-                        : 'text-rose-400'}"
-                    >
-                      {tx.flow === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-          {#if (page.data.pagedTransactions?.totalPages ?? 1) > 1}
-            <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onclick={() => handleTxPageChange(page.data.txPage - 1)}
-                disabled={page.data.txPage <= 1}>Previous</Button
-              >
-              <p class="text-xs text-slate-500">
-                Page {page.data.txPage} / {page.data.pagedTransactions?.totalPages ?? 1}
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onclick={() => handleTxPageChange(page.data.txPage + 1)}
-                disabled={page.data.txPage >= (page.data.pagedTransactions?.totalPages ?? 1)}>Next</Button
-              >
-            </div>
-          {/if}
-        {/if}
-      </CardContent>
-    </Card>
+  <!-- Recent Transactions: mobile overview tab only, never on desktop -->
+  <div class="{activeTab !== 'overview' ? 'hidden' : ''} col-span-1 md:hidden">
+    <TransactionList
+      title="Recent Transactions"
+      subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
+      items={overviewRecentTransactions}
+      pageSize={3}
+      hidePager={true}
+    />
   </div>
+
+  <!-- All Transactions (card view): mobile transactions tab only, never on desktop -->
+  <div class="{activeTab !== 'transactions' ? 'hidden' : ''} col-span-1 space-y-4 md:hidden">
+    <TransactionList
+      title="All Transactions"
+      subtitle={`${selectedMonthLabel} — ${page.data.pagedTransactions?.total ?? 0} transaction${
+        (page.data.pagedTransactions?.total ?? 0) === 1 ? "" : "s"
+      }`}
+      items={pagedDisplayTransactions}
+      pageSize={12}
+      hidePager={true}
+    />
+    <Pagination currentPage={page.data.txPage} totalPages={page.data.pagedTransactions?.totalPages ?? 1} />
+  </div>
+
+  <!-- Transactions Table: desktop only -->
+  <Card class="col-span-1 hidden md:col-span-5 md:block">
+    <CardHeader>
+      <CardTitle class="font-display text-xl">Transactions</CardTitle>
+      <CardDescription>
+        {selectedMonthLabel} — {page.data.pagedTransactions?.total ?? 0} transaction{(page.data.pagedTransactions
+          ?.total ?? 0) === 1
+          ? ""
+          : "s"}
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="p-0">
+      {#if pagedDisplayTransactions.length === 0}
+        <p class="px-6 py-10 text-center text-sm text-slate-500">No transactions for this period.</p>
+      {:else}
+        <Table>
+          <TableHeader class="border-y border-[#252a3a] bg-[#1c2030]">
+            <TableRow class="border-0 hover:bg-transparent">
+              <TableHead class="px-5 py-3 text-xs text-slate-400">Date</TableHead>
+              <TableHead class="px-5 py-3 text-xs text-slate-400">Name</TableHead>
+              <TableHead class="px-5 py-3 text-xs text-slate-400">Merchant</TableHead>
+              <TableHead class="px-5 py-3 text-xs text-slate-400">Category</TableHead>
+              <TableHead class="px-5 py-3 text-right text-xs text-slate-400">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each pagedDisplayTransactions as tx (tx.id)}
+              <TableRow class="border-[#252a3a] hover:bg-[#1c2030]">
+                <TableCell class="px-5 py-3 text-slate-400">{tx.dateLabel}</TableCell>
+                <TableCell class="px-5 py-3 font-medium text-slate-200">{tx.name}</TableCell>
+                <TableCell class="px-5 py-3 text-slate-400">{tx.merchant}</TableCell>
+                <TableCell class="px-5 py-3 text-slate-400">{tx.category}</TableCell>
+                <TableCell
+                  class="px-5 py-3 text-right font-semibold {tx.flow === 'income'
+                    ? 'text-emerald-400'
+                    : 'text-rose-400'}"
+                >
+                  {tx.flow === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
+                </TableCell>
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+        <Pagination currentPage={page.data.txPage} totalPages={page.data.pagedTransactions?.totalPages ?? 1} />
+      {/if}
+    </CardContent>
+  </Card>
 </div>

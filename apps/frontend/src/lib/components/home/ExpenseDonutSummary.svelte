@@ -4,7 +4,6 @@
   import { onMount } from "svelte";
   import { Chart, registerables, type Chart as ChartInstance } from "chart.js";
   import { theme } from "$lib/stores/theme";
-  import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
 
   Chart.register(...registerables);
@@ -174,21 +173,25 @@
         <p class="text-xs text-muted-foreground">{transactionText}</p>
       </div>
     </div>
-    <div class="flex items-center justify-center gap-2">
-      <Button
-        size="sm"
-        variant={categoryMode === "main" ? "default" : "outline"}
-        onclick={() => {
-          categoryMode = "main";
-        }}>Main categories</Button
-      >
-      <Button
-        size="sm"
-        variant={categoryMode === "all" ? "default" : "outline"}
-        onclick={() => {
-          categoryMode = "all";
-        }}>All categories</Button
-      >
+    <div class="flex items-center justify-center">
+      <div class="flex items-center gap-0.5 rounded-full border border-[#252a3a] bg-[#0d0f14] p-0.5">
+        <button
+          onclick={() => {
+            categoryMode = "main";
+          }}
+          class="rounded-full px-3.5 py-1 text-xs font-medium transition-colors {categoryMode === 'main'
+            ? 'bg-[#5b8dee] text-white shadow-sm'
+            : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-200'}">Main categories</button
+        >
+        <button
+          onclick={() => {
+            categoryMode = "all";
+          }}
+          class="rounded-full px-3.5 py-1 text-xs font-medium transition-colors {categoryMode === 'all'
+            ? 'bg-[#5b8dee] text-white shadow-sm'
+            : 'text-slate-400 hover:bg-[#1c2030] hover:text-slate-200'}">All categories</button
+        >
+      </div>
     </div>
   </CardContent>
 </Card>

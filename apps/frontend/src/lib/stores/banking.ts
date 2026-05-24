@@ -4,6 +4,7 @@ import type { BankConnectionState } from "@finance-app/shared-types";
 
 const initialState: BankConnectionState = {
   connected: false,
+  connections: [],
   institutionName: null,
   lastSyncAt: null,
   accounts: [],
@@ -276,14 +277,7 @@ export async function syncBankData() {
       method: "POST",
     });
 
-    bankState.update((current) => ({
-      ...current,
-      connected: true,
-      institutionName: payload.institutionName,
-      lastSyncAt: payload.lastSyncAt,
-      accounts: payload.accounts,
-      recentTransactions: payload.recentTransactions,
-    }));
+    bankState.set(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank sync failed";
     bankError.set(message);
@@ -293,13 +287,14 @@ export async function syncBankData() {
   }
 }
 
-export async function disconnectBank() {
+export async function disconnectBank(itemId: string) {
   bankLoading.set(true);
   bankError.set(null);
 
   try {
-    await apiRequest<{ connected: boolean }>("/api/plaid/connection", { method: "DELETE" });
-    bankState.set(initialState);
+    await apiRequest<{ connected: boolean }>(`/api/plaid/connection?itemId=${encodeURIComponent(itemId)}`, { method: "DELETE" });
+    const state = await apiRequest<BankConnectionState>("/api/plaid/state", { method: "GET" });
+    bankState.set(state);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not disconnect account";
     bankError.set(message);

@@ -1,16 +1,15 @@
-<svelte:options runes={true} />
-
 <script lang="ts">
-  import { cn } from "$lib/utils";
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLThAttributes } from "svelte/elements";
 
-  let { class: className = "", children } = $props<{ class?: string; children?: any }>();
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: WithElementRef<HTMLThAttributes> = $props();
 </script>
 
-<th
-  class={cn(
-    "h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wider text-slate-500",
-    className,
-  )}
->
-  {@render children?.()}
+<th bind:this={ref} data-slot="table-head" class={cn("text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0", className)} {...restProps}>
+	{@render children?.()}
 </th>

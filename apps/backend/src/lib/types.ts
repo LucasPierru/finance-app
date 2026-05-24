@@ -15,6 +15,7 @@ export type {
   FinanceItemInput,
   FinanceState,
   InvestmentSettings,
+  PlaidConnection,
   StoredBankState,
   UpdateBudgetBody,
   UpdateBudgetPlanBody,

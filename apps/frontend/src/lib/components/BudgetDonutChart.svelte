@@ -20,7 +20,7 @@
     costs: FinanceItem[];
   } = $props();
 
-  let donutCanvas: HTMLCanvasElement | undefined;
+  let donutCanvas: HTMLCanvasElement | undefined = $state();
   let donutChart: ChartInstance | undefined;
   let mounted = $state(false);
   let donutCenterX = $state(80);

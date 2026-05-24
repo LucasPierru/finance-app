@@ -95,10 +95,22 @@ export interface UpdateTransactionBody {
   applyToSimilar?: boolean;
 }
 
-export interface BankConnectionState {
-  connected: boolean;
+export interface PlaidConnection {
+  itemId: string;
   institutionName: string | null;
   lastSyncAt: string | null;
+  accounts: BankAccount[];
+}
+
+export interface BankConnectionState {
+  connected: boolean;
+  /** All individual bank connections for the user. */
+  connections: PlaidConnection[];
+  /** Convenience: institution name of the first connection (null if none). */
+  institutionName: string | null;
+  /** Convenience: most-recent lastSyncAt across all connections. */
+  lastSyncAt: string | null;
+  /** All accounts merged across every connection. */
   accounts: BankAccount[];
   recentTransactions: BankTransaction[];
 }
@@ -131,6 +143,7 @@ export interface PagedTransactionsResult {
     totalIncome: number;
     totalExpenses: number;
     transferCount: number;
+    expenseTransactionCount: number;
     categoryBreakdown: Array<{ category: string; totalAmount: number }>;
     dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
   };

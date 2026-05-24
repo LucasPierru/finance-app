@@ -1,11 +1,15 @@
-<svelte:options runes={true} />
-
 <script lang="ts">
-  import { cn } from "$lib/utils";
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLTdAttributes } from "svelte/elements";
 
-  let { class: className = "", children } = $props<{ class?: string; children?: any }>();
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: WithElementRef<HTMLTdAttributes> = $props();
 </script>
 
-<td class={cn("p-4 align-middle", className)}>
-  {@render children?.()}
+<td bind:this={ref} data-slot="table-cell" class={cn("p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0", className)} {...restProps}>
+	{@render children?.()}
 </td>

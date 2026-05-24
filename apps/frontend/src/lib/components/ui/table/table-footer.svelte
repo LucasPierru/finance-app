@@ -7,9 +7,14 @@
 		class: className,
 		children,
 		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLTableRowElement>> = $props();
+	}: WithElementRef<HTMLAttributes<HTMLTableSectionElement>> = $props();
 </script>
 
-<tr bind:this={ref} data-slot="table-row" class={cn("hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors", className)} {...restProps}>
+<tfoot
+	bind:this={ref}
+	data-slot="table-footer"
+	class={cn("bg-muted/50 border-t font-medium [&>tr]:last:border-b-0", className)}
+	{...restProps}
+>
 	{@render children?.()}
-</tr>
+</tfoot>

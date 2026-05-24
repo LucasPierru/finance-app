@@ -6,8 +6,6 @@
   import { costs, investmentSettings, revenues } from "$lib/stores/finance.js";
   import {
     bankError,
-    bankHasSyncedData,
-    bankIsSynced,
     bankLoading,
     bankState,
     createPlaidLinkToken,
@@ -284,29 +282,11 @@
         <p class="mt-2 text-sm text-slate-500">This country is used when opening Plaid Link.</p>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2">
-        {#if !$bankState.connected}
-          <Button onclick={connectWithPlaid} disabled={$bankLoading}>Connect Bank</Button>
-        {:else}
-          <Button onclick={syncBankData} disabled={$bankLoading}>Sync Now</Button>
-          <Button variant="outline" onclick={disconnectBank} disabled={$bankLoading}>Disconnect</Button>
-        {/if}
+      <div class="mb-4">
+        <Button onclick={connectWithPlaid} disabled={$bankLoading}>
+          {$bankState.connections.length > 0 ? "Add an account" : "Connect Bank"}
+        </Button>
       </div>
-
-      <p class="mt-3 text-sm text-slate-500">
-        Status:
-        {#if $bankLoading}
-          Loading...
-        {:else if $bankIsSynced}
-          Connected{$bankState.institutionName ? ` (${$bankState.institutionName})` : ""}. Last sync: {fmtDate(
-            $bankState.lastSyncAt,
-          )}.
-        {:else if $bankState.connected}
-          Connected. Waiting for first sync...
-        {:else}
-          Not connected.
-        {/if}
-      </p>
 
       {#if $bankError}
         <p class="mt-2 rounded-md border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
@@ -314,50 +294,72 @@
         </p>
       {/if}
 
-      {#if $bankHasSyncedData}
-        <div class="mt-4 overflow-x-auto">
-          <table class="min-w-[680px] w-full border border-[#252a3a] rounded-md overflow-hidden">
-            <thead class="bg-[#1c2030] border-b border-[#252a3a]">
-              <tr>
-                <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Account</th>
-                <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Type</th>
-                <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Mask</th>
-                <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Available</th>
-                <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Current</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each $bankState.accounts as account (account.accountId)}
-                <tr class="border-b border-[#252a3a] last:border-none hover:bg-[#1c2030]">
-                  <td class="px-4 py-3 text-sm text-slate-200">
-                    <div class="font-medium">{account.name}</div>
-                    {#if account.officialName}
-                      <div class="text-xs text-slate-500">{account.officialName}</div>
-                    {/if}
-                  </td>
-                  <td class="px-4 py-3 text-sm text-slate-400">{account.type} / {account.subtype ?? "-"}</td>
-                  <td class="px-4 py-3 text-sm text-slate-400">{account.mask ?? "-"}</td>
-                  <td class="px-4 py-3 text-sm text-slate-300">
-                    {fmtCurrency(account.availableBalance, account.isoCurrencyCode)}
-                  </td>
-                  <td class="px-4 py-3 text-sm text-slate-200 font-semibold">
-                    {fmtCurrency(account.currentBalance, account.isoCurrencyCode)}
-                  </td>
-                </tr>
-              {/each}
-
-              {#if $bankState.accounts.length === 0}
-                <tr>
-                  <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No accounts synced yet.</td>
-                </tr>
-              {/if}
-            </tbody>
-          </table>
-        </div>
-      {:else if $bankState.connected}
-        <p class="mt-4 text-sm text-slate-500">
-          Bank data will appear once sync completes. You can also click <strong>Sync Now</strong>.
+      {#if $bankState.connections.length === 0}
+        <p class="mt-2 text-sm text-slate-500">
+          {#if $bankLoading}
+            Loading...
+          {:else}
+            Not connected.
+          {/if}
         </p>
+      {:else}
+        {#each $bankState.connections as connection (connection.itemId)}
+          <div class="mt-4 rounded-md border border-[#252a3a] p-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-medium text-slate-200">{connection.institutionName ?? "Bank Account"}</p>
+                <p class="text-xs text-slate-500">Last sync: {fmtDate(connection.lastSyncAt)}</p>
+              </div>
+              <div class="flex gap-2">
+                <Button size="sm" onclick={syncBankData} disabled={$bankLoading}>Sync Now</Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onclick={() => disconnectBank(connection.itemId)}
+                  disabled={$bankLoading}>Disconnect</Button
+                >
+              </div>
+            </div>
+
+            {#if connection.accounts.length > 0}
+              <div class="overflow-x-auto">
+                <table class="min-w-[680px] w-full border border-[#252a3a] rounded-md overflow-hidden">
+                  <thead class="bg-[#1c2030] border-b border-[#252a3a]">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Account</th>
+                      <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Type</th>
+                      <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Mask</th>
+                      <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Available</th>
+                      <th class="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Current</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each connection.accounts as account (account.accountId)}
+                      <tr class="border-b border-[#252a3a] last:border-none hover:bg-[#1c2030]">
+                        <td class="px-4 py-3 text-sm text-slate-200">
+                          <div class="font-medium">{account.name}</div>
+                          {#if account.officialName}
+                            <div class="text-xs text-slate-500">{account.officialName}</div>
+                          {/if}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-slate-400">{account.type} / {account.subtype ?? "-"}</td>
+                        <td class="px-4 py-3 text-sm text-slate-400">{account.mask ?? "-"}</td>
+                        <td class="px-4 py-3 text-sm text-slate-300">
+                          {fmtCurrency(account.availableBalance, account.isoCurrencyCode)}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-slate-200 font-semibold">
+                          {fmtCurrency(account.currentBalance, account.isoCurrencyCode)}
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {:else}
+              <p class="text-sm text-slate-500">No accounts synced yet. Click <strong>Sync Now</strong>.</p>
+            {/if}
+          </div>
+        {/each}
       {/if}
     </CardContent>
   </Card>

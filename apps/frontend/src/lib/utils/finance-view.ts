@@ -65,6 +65,7 @@ export const emptyFinanceState: FinanceStatePayload = {
 
 export const emptyBankState: BankConnectionState = {
   connected: false,
+  connections: [],
   institutionName: null,
   lastSyncAt: null,
   accounts: [],
