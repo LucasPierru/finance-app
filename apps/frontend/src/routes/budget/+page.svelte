@@ -5,7 +5,7 @@
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
-  import { apiRequest } from "$lib/api/client";
+  import { httpDeleteBudgetPlan } from "$lib/requests/budget";
   import BudgetPlanForm from "$lib/components/BudgetPlanForm.svelte";
   import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
@@ -65,7 +65,7 @@
 
   async function handleDeletePlan(planId: string) {
     try {
-      await apiRequest(`/api/budget/plans/${planId}`, { method: "DELETE" });
+      await httpDeleteBudgetPlan(planId);
       budgetPlans = budgetPlans.filter((p) => p.id !== planId);
     } catch {
       // ignore

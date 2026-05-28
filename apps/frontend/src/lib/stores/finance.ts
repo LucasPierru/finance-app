@@ -1,5 +1,6 @@
 import { derived, writable } from 'svelte/store';
-import { apiRequest } from '$lib/api/client';
+import { api } from '$lib/requests/api';
+import { httpPutFinanceRevenues, httpPutFinanceCosts, httpPutFinanceSettings, httpPostFinanceEntry } from '$lib/requests/finance';
 import { bankState, categorizedBankTransactions } from '$lib/stores/banking';
 
 export interface FinanceItem {
@@ -92,7 +93,7 @@ type RemoteStore<T> = {
   markReady: () => void;
 };
 
-function createRemoteStore<T>(path: string, initialValue: T): RemoteStore<T> {
+function createRemoteStore<T>(persistFn: (value: T) => Promise<void>, initialValue: T): RemoteStore<T> {
   const store = writable<T>(initialValue);
   let ready = false;
   let suppressSync = false;
@@ -100,26 +101,10 @@ function createRemoteStore<T>(path: string, initialValue: T): RemoteStore<T> {
   async function persist(value: T) {
     if (!ready || suppressSync) return;
 
-    const payload =
-      (path === '/api/finance/revenues' || path === '/api/finance/costs') && Array.isArray(value)
-        ? (value as FinanceItem[]).map((item) => ({
-          id: item.id,
-          name: item.name,
-          categoryId: item.categoryId,
-          categoryName: item.category,
-          amount: item.amount,
-          rawAmount: item.rawAmount,
-          frequency: item.frequency,
-        }))
-        : value;
-
     try {
-      await apiRequest(path, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
+      await persistFn(value);
     } catch (error) {
-      console.error(`Failed to persist ${path}`, error);
+      console.error('Failed to persist state', error);
     }
   }
 
@@ -180,10 +165,28 @@ function normalizeInvestmentSettings(settings: InvestmentSettings): InvestmentSe
   return { ...defaultInvestmentSettings, ...settings };
 }
 
-const revenuesStore = createRemoteStore<FinanceItem[]>('/api/finance/revenues', []);
-const costsStore = createRemoteStore<FinanceItem[]>('/api/finance/costs', []);
+function toBackendFinanceItem(item: FinanceItem) {
+  return {
+    id: item.id,
+    name: item.name,
+    categoryId: item.categoryId,
+    categoryName: item.category,
+    amount: item.amount,
+    rawAmount: item.rawAmount,
+    frequency: item.frequency,
+  };
+}
+
+const revenuesStore = createRemoteStore<FinanceItem[]>(
+  (items) => httpPutFinanceRevenues(items.map(toBackendFinanceItem)),
+  [],
+);
+const costsStore = createRemoteStore<FinanceItem[]>(
+  (items) => httpPutFinanceCosts(items.map(toBackendFinanceItem)),
+  [],
+);
 const investmentSettingsStore = createRemoteStore<InvestmentSettings>(
-  '/api/finance/settings',
+  (settings) => httpPutFinanceSettings(settings),
   defaultInvestmentSettings,
 );
 
@@ -198,7 +201,7 @@ export async function fetchFinanceState(): Promise<void> {
 
   financeStatePromise = (async () => {
     try {
-      const state = await apiRequest<BackendFinanceStatePayload>('/api/finance/state', { method: 'GET' });
+      const state = await api.get<BackendFinanceStatePayload>('/api/finance/state');
       revenuesStore.hydrate(state.revenues.map(normalizeFinanceItem));
       costsStore.hydrate(state.costs.map(normalizeFinanceItem));
       investmentSettingsStore.hydrate(normalizeInvestmentSettings(state.investmentSettings));
@@ -409,7 +412,7 @@ export async function addCost(item: Omit<FinanceItem, 'id'>): Promise<void> {
     id: crypto.randomUUID(),
   };
 
-  const response = await apiRequest<{
+  const response = await httpPostFinanceEntry<{
     id?: string;
     name?: string;
     categoryId?: string;
@@ -417,20 +420,17 @@ export async function addCost(item: Omit<FinanceItem, 'id'>): Promise<void> {
     amount?: number;
     rawAmount?: string;
     frequency?: FinanceItem['frequency'];
-    entry?: FinanceItem;
-    cost?: FinanceItem;
-    item?: FinanceItem;
-  }>('/api/finance/entries', {
-    method: 'POST',
-    body: JSON.stringify({
-      type: 'expense',
-      name: draftEntry.name,
-      categoryName: draftEntry.category,
-      categoryId: draftEntry.categoryId,
-      amount: draftEntry.amount,
-      rawAmount: draftEntry.rawAmount,
-      frequency: draftEntry.frequency,
-    }),
+    entry?: BackendFinanceItem;
+    cost?: BackendFinanceItem;
+    item?: BackendFinanceItem;
+  }>({
+    type: 'expense',
+    name: draftEntry.name,
+    categoryName: draftEntry.category,
+    categoryId: draftEntry.categoryId,
+    amount: draftEntry.amount,
+    rawAmount: draftEntry.rawAmount,
+    frequency: draftEntry.frequency,
   });
 
   const createdEntry = normalizeFinanceItem(

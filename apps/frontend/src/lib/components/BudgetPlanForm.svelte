@@ -4,7 +4,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Select } from "$lib/components/ui/select";
-  import { apiRequest } from "$lib/api/client";
+  import { httpPostBudgetPlan, httpPutBudgetPlan } from "$lib/requests/budget";
   import { untrack } from "svelte";
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
 
@@ -77,28 +77,22 @@
       return;
     }
 
-    const body = JSON.stringify({
+    const planBody = {
       name: planName.trim(),
       items: validItems.map((item) => ({
         categoryId: item.categoryId || null,
         amount: Number(item.amount),
         period: item.period,
       })),
-    });
+    };
 
     submitting = true;
     try {
       if (isEditing && editPlan) {
-        const plan = await apiRequest<BudgetPlan>(`/api/budget/plans/${editPlan.id}`, {
-          method: "PUT",
-          body,
-        });
+        const plan = await httpPutBudgetPlan(editPlan.id, planBody);
         onupdated?.(plan);
       } else {
-        const plan = await apiRequest<BudgetPlan>("/api/budget/plans", {
-          method: "POST",
-          body,
-        });
+        const plan = await httpPostBudgetPlan(planBody);
         oncreated?.(plan);
       }
     } catch (e: unknown) {

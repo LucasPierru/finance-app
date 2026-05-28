@@ -133,20 +133,21 @@ export interface TransactionFilters {
   maxAmount?: number;
 }
 
+export interface TransactionSummary {
+  totalIncome: number;
+  totalExpenses: number;
+  transferCount: number;
+  expenseTransactionCount: number;
+  categoryBreakdown: Array<{ category: string; totalAmount: number }>;
+  dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
+}
+
 export interface PagedTransactionsResult {
   transactions: BankTransaction[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
-  summary: {
-    totalIncome: number;
-    totalExpenses: number;
-    transferCount: number;
-    expenseTransactionCount: number;
-    categoryBreakdown: Array<{ category: string; totalAmount: number }>;
-    dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
-  };
 }
 
 export interface AuthUser {

@@ -1,6 +1,6 @@
-import type { BankConnectionState, FinanceCategory } from "@finance-app/shared-types";
 import type { FinanceStatePayload } from "$lib/stores/finance";
-import { fetchBackendJson } from "$lib/server/backend";
+import { httpGetFinanceState, httpGetFinanceCategories } from "$lib/requests/finance";
+import { httpGetPlaidState } from "$lib/requests/plaid";
 
 type EntryFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
 
@@ -118,16 +118,16 @@ function splitEntries(entries: FinanceEntry[]): Pick<FinanceStatePayload, "reven
 }
 
 export async function loadFinancePageData(accessToken: string | null) {
-  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+  const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
   const [stateResponse, initialBankState, allCategories] = await Promise.all([
-    fetchBackendJson<{
+    httpGetFinanceState<{
       revenues?: FinanceEntry[];
       costs?: FinanceEntry[];
       investmentSettings?: unknown;
-    }>("/api/finance/state", { headers }),
-    fetchBackendJson<BankConnectionState>("/api/plaid/state", { headers }),
-    fetchBackendJson<FinanceCategory[]>("/api/finance/categories", { headers }),
+    }>(headers),
+    httpGetPlaidState(headers),
+    httpGetFinanceCategories(headers),
   ]);
 
   const stateRevenues = Array.isArray(stateResponse?.revenues) ? stateResponse.revenues : [];

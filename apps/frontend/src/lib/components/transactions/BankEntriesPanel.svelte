@@ -9,7 +9,7 @@
   import { Select } from "$lib/components/ui/select";
   import { SlidersHorizontal, Pencil, Trash2 } from "lucide-svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { apiRequest } from "$lib/api/client";
+  import { httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
 
   type Mode = "transactions" | "recurring";
@@ -153,9 +153,10 @@
     if (!modalTx) return;
     editSaving = true;
     try {
-      const updated = await apiRequest<TransactionItem>(`/api/plaid/transactions/${modalTx.transactionId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ categoryId: editCategoryId || null, flow: editFlow, applyToSimilar }),
+      const updated = await httpPatchTransaction<TransactionItem>(modalTx.transactionId, {
+        categoryId: editCategoryId || null,
+        flow: editFlow,
+        applyToSimilar,
       });
       onTransactionUpdated?.(updated);
       closeModal();
@@ -168,7 +169,7 @@
     if (!modalTx) return;
     deleteDeleting = true;
     try {
-      await apiRequest(`/api/plaid/transactions/${modalTx.transactionId}`, { method: "DELETE" });
+      await httpDeleteTransaction(modalTx.transactionId);
       const id = modalTx.transactionId;
       closeModal();
       onTransactionDeleted?.(id);

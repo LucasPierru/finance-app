@@ -9,6 +9,7 @@ import {
   deleteTransaction,
   getBankConnectionState,
   getPagedTransactions,
+  getTransactionSummary,
   getStoredBankStates,
   updateTransactionOverride,
   bulkUpdateTransactionsByMerchant,
@@ -136,6 +137,38 @@ plaidRouter.get("/state", async (req, res, next) => {
     next(error);
   }
 });
+
+plaidRouter.get(
+  "/transactions/summary",
+  async (
+    req: Request<Record<string, string>, object, object, Record<string, string>>,
+    res,
+    next,
+  ) => {
+    try {
+      const userId = getAuthenticatedUser(req).userId;
+      const { month, flow, search, minAmount, maxAmount } = req.query;
+
+      const filters: TransactionFilters = {};
+      if (month && /^\d{4}-\d{2}$/.test(month)) filters.month = month;
+      if (flow === "income" || flow === "expense") filters.flow = flow;
+      if (search) filters.search = search.trim().slice(0, 200);
+      if (minAmount) {
+        const n = parseFloat(minAmount);
+        if (!Number.isNaN(n) && n >= 0) filters.minAmount = n;
+      }
+      if (maxAmount) {
+        const n = parseFloat(maxAmount);
+        if (!Number.isNaN(n) && n >= 0) filters.maxAmount = n;
+      }
+
+      const result = await getTransactionSummary(userId, filters);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 plaidRouter.get(
   "/transactions",

@@ -1,5 +1,5 @@
 import type { AuthUser, User } from "@finance-app/shared-types";
-import { fetchBackendResponse } from "$lib/server/backend";
+import { httpGetAuthMe, httpPostAuthRefresh } from "$lib/requests/auth";
 
 type BackendAuthUser = User;
 
@@ -78,7 +78,7 @@ function getSetCookieHeaders(response: Response): string[] {
 }
 
 async function fetchCurrentUser(cookieHeader: string): Promise<BackendAuthUser | null> {
-  const meResponse = await fetchBackendResponse("/api/auth/me", {
+  const meResponse = await httpGetAuthMe({
     method: "GET",
     headers: {
       cookie: cookieHeader,
@@ -124,7 +124,7 @@ export async function resolveAuthSession(cookieHeader: string | null): Promise<A
     };
   }
 
-  const refreshResponse = await fetchBackendResponse("/api/auth/refresh", {
+  const refreshResponse = await httpPostAuthRefresh({
     method: "POST",
     headers: {
       cookie: cookieHeader,

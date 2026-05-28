@@ -10,7 +10,7 @@
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
   import { hydrateFinanceState } from "$lib/stores/finance";
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
-  import { apiRequest } from "$lib/api/client";
+  import { httpPostPlaidSync } from "$lib/requests/plaid";
   import type { BankConnectionState } from "@finance-app/shared-types";
   import {
     emptyBankState,
@@ -40,6 +40,7 @@
     page.data.filters ?? { month: "", page: 1, flow: "", search: "", minAmount: "", maxAmount: "" },
   );
   const pagedTransactions = $derived(page.data.pagedTransactions ?? null);
+  const txSummary = $derived(page.data.txSummary ?? null);
   const categorizedPagedTransactions = $derived(
     ((pagedTransactions?.transactions ?? []) as import("@finance-app/shared-types").BankTransaction[]).map((tx) =>
       categorizeBankTransaction(tx, allCategories),
@@ -86,9 +87,7 @@
   }
 
   async function syncBankData() {
-    const payload = await apiRequest<BankConnectionState>("/api/plaid/sync", {
-      method: "POST",
-    });
+    const payload = await httpPostPlaidSync();
     bankState = {
       ...bankState,
       connected: true,
@@ -127,13 +126,13 @@
     <Card>
       <CardHeader class="pb-2">
         <CardDescription>Income</CardDescription>
-        <CardTitle class="text-2xl text-emerald-400">{fmt(pagedTransactions?.summary.totalIncome ?? 0)}</CardTitle>
+        <CardTitle class="text-2xl text-emerald-400">{fmt(txSummary?.totalIncome ?? 0)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
         <CardDescription>Expenses</CardDescription>
-        <CardTitle class="text-2xl text-rose-400">{fmt(pagedTransactions?.summary.totalExpenses ?? 0)}</CardTitle>
+        <CardTitle class="text-2xl text-rose-400">{fmt(txSummary?.totalExpenses ?? 0)}</CardTitle>
       </CardHeader>
     </Card>
   </div>

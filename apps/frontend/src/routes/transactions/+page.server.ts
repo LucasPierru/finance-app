@@ -1,7 +1,6 @@
 import type { PageServerLoad } from "./$types";
 import { loadFinancePageData } from "$lib/server/page-data";
-import { fetchBackendJson } from "$lib/server/backend";
-import type { PagedTransactionsResult } from "@finance-app/shared-types";
+import { httpGetTransactions, httpGetTransactionSummary } from "$lib/requests/transactions";
 
 function currentMonthKey(): string {
   const now = new Date();
@@ -25,14 +24,22 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (minAmount) txParams.set("minAmount", minAmount);
   if (maxAmount) txParams.set("maxAmount", maxAmount);
 
-  const [financePageData, pagedTransactions] = await Promise.all([
+  const summaryParams = new URLSearchParams({ month });
+  if (flow) summaryParams.set("flow", flow);
+  if (search) summaryParams.set("search", search);
+  if (minAmount) summaryParams.set("minAmount", minAmount);
+  if (maxAmount) summaryParams.set("maxAmount", maxAmount);
+
+  const [financePageData, pagedTransactions, txSummary] = await Promise.all([
     loadFinancePageData(accessToken),
-    fetchBackendJson<PagedTransactionsResult>(`/api/plaid/transactions?${txParams}`, { headers }),
+    httpGetTransactions(txParams, headers),
+    httpGetTransactionSummary(summaryParams, headers),
   ]);
 
   return {
     ...financePageData,
     pagedTransactions: pagedTransactions ?? null,
+    txSummary: txSummary ?? null,
     filters: { month, page, flow, search, minAmount, maxAmount },
   };
 };

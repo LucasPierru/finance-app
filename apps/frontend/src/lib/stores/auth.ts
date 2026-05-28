@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { apiRequest } from "$lib/api/client";
+import { httpGetCurrentUser, httpPostAuthRequestCode, httpPostAuthVerifyCode, httpPostAuthRegister, httpPostAuthLogout } from '$lib/requests/auth';
 import type { AuthUser, RegisterProfile, User } from "@finance-app/shared-types";
 
 type BackendAuthUser = User;
@@ -68,7 +68,7 @@ function applyLoggedOutState() {
 }
 
 async function loadCurrentUser(): Promise<AuthUser> {
-  const payload = await apiRequest<{ user: BackendAuthUser }>("/api/auth/me", { method: "GET" });
+  const payload = await httpGetCurrentUser();
   return normalizeAuthUser(payload.user);
 }
 
@@ -89,12 +89,7 @@ export async function requestLoginCode(email: string): Promise<void> {
   setError(null);
 
   try {
-    await apiRequest<void>("/api/auth/request-code", {
-      method: "POST",
-      skipAuth: true,
-      noRetry: true,
-      body: JSON.stringify({ email: email.trim().toLowerCase() }),
-    });
+    await httpPostAuthRequestCode(email.trim().toLowerCase());
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not request login code";
     console.error("Error requesting login code:", message);
@@ -110,16 +105,7 @@ export async function verifyLoginCode(email: string, code: string): Promise<void
   setError(null);
 
   try {
-    const payload = await apiRequest<{ user?: BackendAuthUser }>("/api/auth/verify-code", {
-      method: "POST",
-      skipAuth: true,
-      noRetry: true,
-      body: JSON.stringify({
-        email: email.trim().toLowerCase(),
-        code: code.trim(),
-      }),
-    });
-
+    const payload = await httpPostAuthVerifyCode(email.trim().toLowerCase(), code.trim());
     const user = payload.user ? normalizeAuthUser(payload.user) : await loadCurrentUser();
     applyAuthenticatedUser(user);
   } catch (error) {
@@ -136,17 +122,7 @@ export async function requestRegistrationCode(profile: RegisterProfile): Promise
   setError(null);
 
   try {
-    await apiRequest<void>("/api/auth/register", {
-      method: "POST",
-      skipAuth: true,
-      noRetry: true,
-      body: JSON.stringify({
-        email: profile.email.trim().toLowerCase(),
-        name: profile.name.trim(),
-        birthDate: profile.dateOfBirth,
-        phone: profile.phoneNumber.trim(),
-      }),
-    });
+    await httpPostAuthRegister(profile);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not request registration code";
     setError(message);
@@ -164,11 +140,7 @@ export async function logout(): Promise<void> {
   setLoading(true);
 
   try {
-    await apiRequest<void>("/api/auth/logout", {
-      method: "POST",
-      skipAuth: true,
-      noRetry: true,
-    }).catch(() => undefined);
+    await httpPostAuthLogout();
   } finally {
     clearTokens();
     applyLoggedOutState();

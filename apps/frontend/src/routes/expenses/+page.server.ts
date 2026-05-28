@@ -1,6 +1,6 @@
 import type { PageServerLoad } from "./$types";
 import type { FinanceStatePayload } from "$lib/stores/finance";
-import { fetchBackendJson } from "$lib/server/backend";
+import { httpGetFinanceEntries } from "$lib/requests/finance";
 
 type EntryFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
 
@@ -104,7 +104,7 @@ export const load: PageServerLoad = async ({ request }) => {
   const cookieHeader = request.headers.get("cookie");
   const headers = cookieHeader ? { cookie: cookieHeader } : undefined;
 
-  const entriesResponse = await fetchBackendJson<unknown>("/api/finance/entries", { headers });
+  const entriesResponse = await httpGetFinanceEntries(headers);
 
   const { revenues, costs } = splitEntries(pickEntries(entriesResponse));
   const initialFinanceState: FinanceStatePayload = {

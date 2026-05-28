@@ -1,7 +1,7 @@
 import type { PageServerLoad } from "./$types";
 import { loadFinancePageData } from "$lib/server/page-data";
-import { fetchBackendJson } from "$lib/server/backend";
-import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
+import { httpGetBudgetPlans } from "$lib/requests/budget";
+import { httpGetFinanceCategories } from "$lib/requests/finance";
 
 export const load: PageServerLoad = async ({ locals }) => {
   const accessToken = locals.auth.accessToken;
@@ -9,8 +9,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const [financeData, budgetPlans, categories] = await Promise.all([
     loadFinancePageData(accessToken),
-    fetchBackendJson<BudgetPlan[]>("/api/budget/plans", { headers }) ?? [],
-    fetchBackendJson<FinanceCategory[]>("/api/finance/categories", { headers }) ?? [],
+    httpGetBudgetPlans(headers) ?? [],
+    httpGetFinanceCategories(headers) ?? [],
   ]);
 
   return {

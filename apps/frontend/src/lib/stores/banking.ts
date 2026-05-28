@@ -1,5 +1,5 @@
 import { derived, writable } from "svelte/store";
-import { apiRequest } from "$lib/api/client";
+import { httpGetPlaidState, httpPostPlaidLinkToken, httpPostPlaidExchangePublicToken, httpPostPlaidSync, httpDeletePlaidConnection } from "$lib/requests/plaid";
 import type { BankConnectionState } from "@finance-app/shared-types";
 
 const initialState: BankConnectionState = {
@@ -223,7 +223,7 @@ export async function fetchBankState() {
   bankError.set(null);
 
   try {
-    const state = await apiRequest<BankConnectionState>("/api/plaid/state", { method: "GET" });
+    const state = await httpGetPlaidState();
     bankState.set(state);
 
     if (state.connected && !state.lastSyncAt) {
@@ -240,10 +240,7 @@ export async function fetchBankState() {
 export async function createPlaidLinkToken(countryCode?: string): Promise<string> {
   bankError.set(null);
   const resolvedCountryCode = countryCode?.trim().toUpperCase() || inferUserCountryCode();
-  const data = await apiRequest<{ linkToken: string }>("/api/plaid/link-token", {
-    method: "POST",
-    body: JSON.stringify({ countryCode: resolvedCountryCode }),
-  });
+  const data = await httpPostPlaidLinkToken(resolvedCountryCode);
   return data.linkToken;
 }
 
@@ -252,11 +249,7 @@ export async function exchangePublicToken(publicToken: string, institutionName: 
   bankError.set(null);
 
   try {
-    const payload = await apiRequest<BankConnectionState>("/api/plaid/exchange-public-token", {
-      method: "POST",
-      body: JSON.stringify({ publicToken, institutionName }),
-    });
-
+    const payload = await httpPostPlaidExchangePublicToken(publicToken, institutionName);
     bankState.set(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank connection failed";
@@ -273,10 +266,7 @@ export async function syncBankData() {
   bankError.set(null);
 
   try {
-    const payload = await apiRequest<BankConnectionState>("/api/plaid/sync", {
-      method: "POST",
-    });
-
+    const payload = await httpPostPlaidSync();
     bankState.set(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank sync failed";
@@ -292,8 +282,8 @@ export async function disconnectBank(itemId: string) {
   bankError.set(null);
 
   try {
-    await apiRequest<{ connected: boolean }>(`/api/plaid/connection?itemId=${encodeURIComponent(itemId)}`, { method: "DELETE" });
-    const state = await apiRequest<BankConnectionState>("/api/plaid/state", { method: "GET" });
+    await httpDeletePlaidConnection(itemId);
+    const state = await httpGetPlaidState();
     bankState.set(state);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not disconnect account";

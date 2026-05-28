@@ -185,6 +185,97 @@ export async function getBankConnectionState(userId: string): Promise<BankConnec
   };
 }
 
+export async function getTransactionSummary(
+  userId: string,
+  filters: TransactionFilters,
+): Promise<import('@finance-app/shared-types').TransactionSummary> {
+  const conditions: string[] = ["t.user_id = $1", "t.source = 'plaid'"];
+  const params: unknown[] = [userId];
+
+  if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
+    params.push(filters.month);
+    conditions.push(`TO_CHAR(t.date, 'YYYY-MM') = $${params.length}`);
+  }
+  if (filters.flow === 'income') {
+    conditions.push("t.flow = 'income'");
+  } else if (filters.flow === 'expense') {
+    conditions.push("t.flow = 'expense'");
+  }
+  if (filters.search) {
+    params.push(`%${filters.search}%`);
+    conditions.push(`(t.name ILIKE $${params.length} OR t.merchant_name ILIKE $${params.length})`);
+  }
+  if (filters.minAmount !== undefined) {
+    params.push(filters.minAmount);
+    conditions.push(`t.amount >= $${params.length}`);
+  }
+  if (filters.maxAmount !== undefined) {
+    params.push(filters.maxAmount);
+    conditions.push(`t.amount <= $${params.length}`);
+  }
+
+  const where = conditions.join(' AND ');
+  const isTransfer = `COALESCE(
+    (LOWER(t.plaid_category->>0) = 'transfer' AND LOWER(t.plaid_category->>1) = 'credit card')
+    OR LOWER(t.name) LIKE '%credit card payment%'
+    OR LOWER(t.name) LIKE '%autopay%',
+    FALSE
+  )`;
+
+  const [summaryResult, breakdownResult, dailyResult] = await Promise.all([
+    pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN t.flow = 'income'  AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_income,
+         COALESCE(SUM(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_expenses,
+         COUNT(CASE WHEN ${isTransfer} THEN 1 END) AS transfer_count,
+         COUNT(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN 1 END) AS expense_count
+       FROM transactions t WHERE ${where}`,
+      params,
+    ),
+    pool.query(
+      `SELECT
+         COALESCE(c.name, t.plaid_category->>0, 'Other') AS category,
+         SUM(t.amount) AS total_amount
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+       WHERE ${where}
+         AND t.flow = 'expense'
+         AND NOT ${isTransfer}
+       GROUP BY COALESCE(c.name, t.plaid_category->>0, 'Other')
+       ORDER BY total_amount DESC`,
+      params,
+    ),
+    pool.query(
+      `SELECT
+         TO_CHAR(t.date, 'YYYY-MM-DD') AS day,
+         SUM(t.amount) AS total_amount
+       FROM transactions t
+       WHERE ${where}
+         AND t.flow = 'expense'
+         AND NOT ${isTransfer}
+       GROUP BY day
+       ORDER BY day ASC`,
+      params,
+    ),
+  ]);
+
+  const summaryRow = summaryResult.rows[0];
+  return {
+    totalIncome: Number(summaryRow.total_income),
+    totalExpenses: Number(summaryRow.total_expenses),
+    transferCount: Number(summaryRow.transfer_count),
+    expenseTransactionCount: Number(summaryRow.expense_count),
+    categoryBreakdown: breakdownResult.rows.map((r) => ({
+      category: String(r.category),
+      totalAmount: Number(r.total_amount),
+    })),
+    dailyExpenseBreakdown: dailyResult.rows.map((r) => ({
+      date: String(r.day),
+      totalAmount: Number(r.total_amount),
+    })),
+  };
+}
+
 export async function getPagedTransactions(
   userId: string,
   filters: TransactionFilters,
@@ -228,22 +319,8 @@ export async function getPagedTransactions(
   params.push(offset);
   const offsetParam = params.length;
 
-  // Transfer detection: only Credit Card subcategory (Transfer > Credit Card in Plaid's
-  // legacy hierarchy). Payroll, ACH, and other transfers also have plaid_category[0]='Transfer'
-  // but must NOT be excluded — they are legitimate income/expense entries.
-  // COALESCE(..., FALSE) is critical: plaid_category can be an empty array ([]) which makes
-  // plaid_category->>0 return NULL, and NOT NULL = NULL (falsy), silently zeroing totals.
-  const isTransfer = `COALESCE(
-    (LOWER(t.plaid_category->>0) = 'transfer' AND LOWER(t.plaid_category->>1) = 'credit card')
-    OR LOWER(t.name) LIKE '%credit card payment%'
-    OR LOWER(t.name) LIKE '%autopay%',
-    FALSE
-  )`;
-
-  const summaryParams = params.slice(0, -2);
-
-  const [countResult, dataResult, summaryResult, breakdownResult, dailyResult] = await Promise.all([
-    pool.query(`SELECT COUNT(*) FROM transactions t WHERE ${where}`, summaryParams),
+  const [countResult, dataResult] = await Promise.all([
+    pool.query(`SELECT COUNT(*) FROM transactions t WHERE ${where}`, params.slice(0, -2)),
     pool.query(
       `SELECT t.id, t.account_id, t.date, t.name, t.merchant_name, t.amount,
               t.iso_currency_code, t.plaid_category, t.pending,
@@ -256,65 +333,15 @@ export async function getPagedTransactions(
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       params,
     ),
-    pool.query(
-      `SELECT
-         COALESCE(SUM(CASE WHEN t.flow = 'income'  AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_income,
-         COALESCE(SUM(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_expenses,
-         COUNT(CASE WHEN ${isTransfer} THEN 1 END) AS transfer_count,
-         COUNT(CASE WHEN t.flow = 'expense' AND NOT ${isTransfer} THEN 1 END) AS expense_count
-       FROM transactions t WHERE ${where}`,
-      summaryParams,
-    ),
-    pool.query(
-      `SELECT
-         COALESCE(c.name, t.plaid_category->>0, 'Other') AS category,
-         SUM(t.amount) AS total_amount
-       FROM transactions t
-       LEFT JOIN categories c ON c.id = t.category_id
-       WHERE ${where}
-         AND t.flow = 'expense'
-         AND NOT ${isTransfer}
-       GROUP BY COALESCE(c.name, t.plaid_category->>0, 'Other')
-       ORDER BY total_amount DESC`,
-      summaryParams,
-    ),
-    pool.query(
-      `SELECT
-         TO_CHAR(t.date, 'YYYY-MM-DD') AS day,
-         SUM(t.amount) AS total_amount
-       FROM transactions t
-       WHERE ${where}
-         AND t.flow = 'expense'
-         AND NOT ${isTransfer}
-       GROUP BY day
-       ORDER BY day ASC`,
-      summaryParams,
-    ),
   ]);
 
   const total = parseInt(countResult.rows[0].count as string, 10);
-  const summaryRow = summaryResult.rows[0];
-
   return {
     transactions: dataResult.rows.map(mapTransactionRow),
     total,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
-    summary: {
-      totalIncome: Number(summaryRow.total_income),
-      totalExpenses: Number(summaryRow.total_expenses),
-      transferCount: Number(summaryRow.transfer_count),
-      expenseTransactionCount: Number(summaryRow.expense_count),
-      categoryBreakdown: breakdownResult.rows.map((r) => ({
-        category: String(r.category),
-        totalAmount: Number(r.total_amount),
-      })),
-      dailyExpenseBreakdown: dailyResult.rows.map((r) => ({
-        date: String(r.day),
-        totalAmount: Number(r.total_amount),
-      })),
-    },
   };
 }
 

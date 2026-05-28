@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { addRevenue, addCost, toMonthly, type FinanceItem } from "$lib/stores/finance.js";
-  import { apiRequest } from "$lib/api/client";
+  import { api } from "$lib/requests/api";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Select } from "$lib/components/ui/select";
@@ -29,7 +29,7 @@
 
   onMount(async () => {
     try {
-      const data = await apiRequest<Category[]>("/api/finance/categories");
+      const data = await api.get<Category[]>('/api/finance/categories');
       categories = data;
       const filtered = data.filter((c) => c.type === variant);
       if (filtered.length > 0) categoryId = filtered[0].id;
