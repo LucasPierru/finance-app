@@ -81,14 +81,14 @@ function resolveCategory(transaction: BankConnectionState["recentTransactions"][
   const matched = categoryKeywordMap.find((entry) => entry.keywords.some((keyword) => haystack.includes(keyword)));
   if (matched) return matched.category;
 
-  return transaction.amount < 0 ? "Income" : "Expense";
+  return transaction.flow === "income" ? "Income" : "Expense";
 }
 
 function toCategorized(transaction: BankConnectionState["recentTransactions"][number]): CategorizedBankTransaction {
   return {
     ...transaction,
     resolvedCategory: resolveCategory(transaction),
-    flow: transaction.amount < 0 ? "income" : "expense",
+    flow: transaction.flow,
     merchantKey: normalizeMerchantKey(transaction),
   };
 }

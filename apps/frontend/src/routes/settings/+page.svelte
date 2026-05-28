@@ -15,6 +15,7 @@
   } from "$lib/stores/banking";
   import { setTheme, theme, type ThemeName } from "$lib/stores/theme";
   import { Button } from "$lib/components/ui/button";
+  import { LoaderCircle } from "lucide-svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
@@ -128,6 +129,16 @@
               : null;
 
           await exchangePublicToken(publicToken, institutionName);
+        },
+        onExit: (err) => {
+          if (err && typeof err === "object") {
+            const e = err as Record<string, unknown>;
+            bankError.set(
+              (typeof e.display_message === "string" && e.display_message) ||
+              (typeof e.error_message === "string" && e.error_message) ||
+              "Bank connection cancelled"
+            );
+          }
         },
       });
 
@@ -311,7 +322,14 @@
                 <p class="text-xs text-slate-500">Last sync: {fmtDate(connection.lastSyncAt)}</p>
               </div>
               <div class="flex gap-2">
-                <Button size="sm" onclick={syncBankData} disabled={$bankLoading}>Sync Now</Button>
+                <Button size="sm" onclick={syncBankData} disabled={$bankLoading}>
+                  {#if $bankLoading}
+                    <LoaderCircle class="animate-spin" />
+                    Syncing...
+                  {:else}
+                    Sync Now
+                  {/if}
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

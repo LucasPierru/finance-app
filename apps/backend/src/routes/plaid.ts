@@ -325,11 +325,20 @@ plaidRouter.post("/sync", async (req, res, next) => {
     }
 
     for (const state of states) {
-      const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
-      await upsertStoredBankState(userId, nextState, {
-        removedTransactionIds,
-        pruneMissingAccounts: true,
-      });
+      try {
+        const { nextState, removedTransactionIds } = await syncTransactionsForState(state);
+        await upsertStoredBankState(userId, nextState, {
+          removedTransactionIds,
+          pruneMissingAccounts: true,
+        });
+      } catch (err: any) {
+        const plaidError = err?.response?.data;
+        if (plaidError?.error_type) {
+          console.error(`Plaid sync skipped for item ${state.itemId}: [${plaidError.error_type}/${plaidError.error_code}] ${plaidError.error_message}`);
+          continue;
+        }
+        throw err;
+      }
     }
 
     const connectionState = await getBankConnectionState(userId);

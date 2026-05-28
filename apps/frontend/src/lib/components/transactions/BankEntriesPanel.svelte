@@ -7,7 +7,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
-  import { SlidersHorizontal, Pencil, Trash2 } from "lucide-svelte";
+  import { SlidersHorizontal, Pencil, Trash2, LoaderCircle } from "lucide-svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
@@ -87,6 +87,17 @@
     onTransactionUpdated?: (tx: TransactionItem) => void;
     onTransactionDeleted?: (transactionId: string) => void;
   } = $props();
+
+  let syncing = $state(false);
+
+  async function handleRefresh() {
+    syncing = true;
+    try {
+      await onRefresh();
+    } finally {
+      syncing = false;
+    }
+  }
 
   // Client-side pagination only used for recurring entries
   let recurringPage = $state(1);
@@ -220,7 +231,14 @@
           </Button>
         {/if}
         {#if connected}
-          <Button variant="outline" size="sm" onclick={onRefresh}>Refresh</Button>
+          <Button variant="outline" size="sm" onclick={handleRefresh} disabled={syncing}>
+            {#if syncing}
+              <LoaderCircle class="animate-spin" />
+              Syncing...
+            {:else}
+              Refresh
+            {/if}
+          </Button>
         {/if}
       </div>
     </div>
