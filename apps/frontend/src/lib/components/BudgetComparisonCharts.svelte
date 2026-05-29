@@ -6,11 +6,10 @@
   import { theme } from "$lib/stores/theme";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import type { FinanceItem } from "$lib/stores/finance";
-  import type { BudgetPlan, BudgetPlanItem } from "@finance-app/shared-types";
+  import type { BudgetPlan } from "@finance-app/shared-types";
+  import { toMonthly, spentForItem, spentColor } from "$lib/utils/budget";
 
   Chart.register(...registerables);
-
-  type Period = "weekly" | "monthly" | "yearly";
 
   let {
     budgetPlans,
@@ -37,34 +36,23 @@
 
   const selectedPlan = $derived(budgetPlans.find((p) => p.id === selectedPlanId) ?? budgetPlans[0] ?? null);
 
-  function toMonthly(amount: number, period: Period): number {
-    if (period === "weekly") return (amount * 52) / 12;
-    if (period === "yearly") return amount / 12;
-    return amount;
-  }
-
-  function spentForItem(item: BudgetPlanItem): number {
-    if (!item.categoryId) return 0;
-    return costs.filter((c) => c.categoryId === item.categoryId).reduce((sum, c) => sum + c.amount, 0);
-  }
-
   const chartData = $derived.by(() => {
     if (!selectedPlan || selectedPlan.items.length === 0) return null;
     const items = selectedPlan.items;
     return {
       labels: items.map((item) => item.categoryName ?? "General"),
-      budgets: items.map((item) => toMonthly(item.amount, item.period as Period)),
-      spent: items.map((item) => spentForItem(item)),
+      budgets: items.map((item) => toMonthly(item.amount, item.period)),
+      spent: items.map((item) => spentForItem(item, costs)),
     };
   });
 
   const utilizationData = $derived.by(() => {
     if (!selectedPlan || selectedPlan.items.length === 0) return null;
     const totalBudget = selectedPlan.items.reduce(
-      (sum, item) => sum + toMonthly(item.amount, item.period as Period),
+      (sum, item) => sum + toMonthly(item.amount, item.period),
       0,
     );
-    const totalSpent = selectedPlan.items.reduce((sum, item) => sum + spentForItem(item), 0);
+    const totalSpent = selectedPlan.items.reduce((sum, item) => sum + spentForItem(item, costs), 0);
     const pct = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
     const remaining = Math.max(totalBudget - totalSpent, 0);
     const isOver = totalSpent > totalBudget;
@@ -76,18 +64,6 @@
     const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
     if (!value) return "#000000";
     return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
-
-  const SPENT_OK = "hsl(142 71% 45% / 0.85)";
-  const SPENT_OVER = "hsl(0 72% 51% / 0.85)";
-  const SPENT_WARN = "hsl(43 96% 56% / 0.85)";
-
-  function spentColor(spent: number, budget: number): string {
-    if (budget <= 0) return SPENT_OK;
-    const pct = spent / budget;
-    if (pct >= 1) return SPENT_OVER;
-    if (pct >= 0.85) return SPENT_WARN;
-    return SPENT_OK;
   }
 
   function renderBarChart() {

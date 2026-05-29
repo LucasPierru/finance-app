@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { page } from "$app/state";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { onMount } from "svelte";
   import EntryFormCard from "$lib/components/EntryFormCard.svelte";
   import FinanceListCard from "$lib/components/FinanceListCard.svelte";
@@ -37,7 +37,7 @@
   );
 
   const filters = $derived(
-    page.data.filters ?? { month: "", page: 1, flow: "", search: "", minAmount: "", maxAmount: "" },
+    page.data.filters ?? { month: "", page: 1, flow: "", search: "", minAmount: "", maxAmount: "", categoryId: "", subCategoryId: "", sortBy: "", sortDir: "" },
   );
   const pagedTransactions = $derived(page.data.pagedTransactions ?? null);
   const txSummary = $derived(page.data.txSummary ?? null);
@@ -96,6 +96,7 @@
       accounts: payload.accounts,
       recentTransactions: payload.recentTransactions,
     };
+    await invalidateAll();
   }
 
   function handleTransactionUpdated(_updated: { transactionId: string }) {
@@ -104,6 +105,10 @@
   }
 
   function handleTransactionDeleted(_transactionId: string) {
+    goto(page.url, { replaceState: true, invalidateAll: true });
+  }
+
+  function handleTransactionCreated() {
     goto(page.url, { replaceState: true, invalidateAll: true });
   }
 
@@ -168,7 +173,7 @@
     serverPage={pagedTransactions?.page ?? 1}
     serverTotalPages={pagedTransactions?.totalPages ?? 1}
     serverTotal={pagedTransactions?.total ?? 0}
-    filters={{ flow: filters.flow, search: searchInput, minAmount: filters.minAmount, maxAmount: filters.maxAmount }}
+    filters={{ flow: filters.flow, search: searchInput, minAmount: filters.minAmount, maxAmount: filters.maxAmount, categoryId: filters.categoryId, subCategoryId: filters.subCategoryId, sortBy: filters.sortBy, sortDir: filters.sortDir }}
     onRefresh={syncBankData}
     onModeChange={(next) => {
       viewMode = next;
@@ -179,6 +184,7 @@
     onPageChange={handlePageChange}
     onFilterChange={(patch) => navigate(patch)}
     onSearchInput={handleSearchInput}
+    onTransactionCreated={handleTransactionCreated}
     onTransactionUpdated={handleTransactionUpdated}
     onTransactionDeleted={handleTransactionDeleted}
   />

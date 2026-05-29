@@ -100,6 +100,24 @@
     ),
   );
 
+  const currentMonthCosts = $derived.by<import("$lib/stores/finance").FinanceItem[]>(() => {
+    const breakdown = page.data.currentMonthSummary?.categoryBreakdown ?? [];
+    const categories = page.data.allCategories ?? [];
+    if (breakdown.length === 0) return financeView.costs;
+    return breakdown.map((b, i) => {
+      const cat = categories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
+      return {
+        id: `month-${i}`,
+        name: b.category,
+        category: b.category,
+        categoryId: cat?.id,
+        amount: b.totalAmount,
+        rawAmount: b.totalAmount.toFixed(2),
+        frequency: "monthly" as const,
+      };
+    });
+  });
+
   const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
   const pagedDisplayTransactions = $derived(page.data.pagedTransactions?.transactions.map(toDisplayTransaction) ?? []);
 </script>
@@ -188,10 +206,10 @@
       </div>
     {/if}
     <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-2">
-      <BudgetDonutChart selectedPlan={budgetPlan} costs={financeView.costs} />
+      <BudgetDonutChart selectedPlan={budgetPlan} costs={currentMonthCosts} />
     </div>
     <div class="{activeTab !== 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-3">
-      <BudgetBarChart selectedPlan={budgetPlan} costs={financeView.costs} />
+      <BudgetBarChart selectedPlan={budgetPlan} costs={currentMonthCosts} />
     </div>
   {/if}
 
@@ -235,25 +253,25 @@
       {#if pagedDisplayTransactions.length === 0}
         <p class="px-6 py-10 text-center text-sm text-slate-500">No transactions for this period.</p>
       {:else}
-        <Table>
+        <Table class="table-fixed w-full">
           <TableHeader class="border-y border-[#252a3a] bg-[#1c2030]">
             <TableRow class="border-0 hover:bg-transparent">
-              <TableHead class="px-5 py-3 text-xs text-slate-400">Date</TableHead>
-              <TableHead class="px-5 py-3 text-xs text-slate-400">Name</TableHead>
-              <TableHead class="px-5 py-3 text-xs text-slate-400">Merchant</TableHead>
-              <TableHead class="px-5 py-3 text-xs text-slate-400">Category</TableHead>
-              <TableHead class="px-5 py-3 text-right text-xs text-slate-400">Amount</TableHead>
+              <TableHead class="w-[110px] px-3 py-3 text-xs text-slate-400">Date</TableHead>
+              <TableHead class="w-[30%] px-3 py-3 text-xs text-slate-400">Name</TableHead>
+              <TableHead class="w-[22%] px-3 py-3 text-xs text-slate-400">Merchant</TableHead>
+              <TableHead class="w-[22%] px-3 py-3 text-xs text-slate-400">Category</TableHead>
+              <TableHead class="w-[120px] px-3 py-3 text-right text-xs text-slate-400">Amount</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {#each pagedDisplayTransactions as tx (tx.id)}
               <TableRow class="border-[#252a3a] hover:bg-[#1c2030]">
-                <TableCell class="px-5 py-3 text-slate-400">{tx.dateLabel}</TableCell>
-                <TableCell class="px-5 py-3 font-medium text-slate-200">{tx.name}</TableCell>
-                <TableCell class="px-5 py-3 text-slate-400">{tx.merchant}</TableCell>
-                <TableCell class="px-5 py-3 text-slate-400">{tx.category}</TableCell>
+                <TableCell class="whitespace-nowrap px-3 py-3 text-slate-400">{tx.dateLabel}</TableCell>
+                <TableCell class="truncate px-3 py-3 font-medium text-slate-200" title={tx.name}>{tx.name}</TableCell>
+                <TableCell class="truncate px-3 py-3 text-slate-400" title={tx.merchant}>{tx.merchant}</TableCell>
+                <TableCell class="truncate px-3 py-3 text-slate-400">{tx.category}</TableCell>
                 <TableCell
-                  class="px-5 py-3 text-right font-semibold {tx.flow === 'income'
+                  class="whitespace-nowrap px-3 py-3 text-right font-semibold {tx.flow === 'income'
                     ? 'text-emerald-400'
                     : 'text-rose-400'}"
                 >

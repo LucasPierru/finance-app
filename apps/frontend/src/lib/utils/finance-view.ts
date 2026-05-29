@@ -19,12 +19,15 @@ export interface CategorizedBankTransaction {
   category: string[];
   pending: boolean;
   flow: "income" | "expense";
+  personalFinanceCategory: string | null;
+  personalFinanceCategoryDetailed: string | null;
   categoryId: string | null;
   categoryName: string | null;
   resolvedCategory: string;
   resolvedCategoryId: string | null;
   merchantKey: string;
   isTransfer: boolean;
+  isInternal: boolean;
 }
 
 export interface RecurringBankEntry {
@@ -118,21 +121,29 @@ function normalizeMerchantKey(transaction: BankTransaction): string {
 }
 
 /**
- * Detects internal transfers (credit card payments) that appear in both
- * a checking account AND the credit card account, causing double-counting.
- * Only flags Transfer > Credit Card category — NOT payroll/ACH deposits which
- * Plaid also puts under the "Transfer" top-level category.
+ * Detects credit card payments and internal account moves that cause double-counting
+ * and should be excluded from income/expense totals.
+ * ACH payments to external parties (rent, mortgage) are TRANSFER_OUT but are genuine
+ * expenses — only TRANSFER_OUT_CREDIT_CARD_PAYMENT is excluded.
  */
-export function isTransferTransaction(transaction: Pick<BankTransaction, 'category' | 'name'>): boolean {
-  // Plaid: Transfer > Credit Card = credit card payment (shows in both accounts)
+export function isTransferTransaction(
+  transaction: Pick<BankTransaction, 'category' | 'name' | 'personalFinanceCategory' | 'personalFinanceCategoryDetailed'>,
+): boolean {
+  // Credit card payment (debit from checking = credit on card — counts in both accounts)
+  if (transaction.personalFinanceCategoryDetailed === 'TRANSFER_OUT_CREDIT_CARD_PAYMENT') return true;
+  // Internal account moves showing as income in the destination account
+  if (
+    transaction.personalFinanceCategory === 'TRANSFER_IN' &&
+    (transaction.personalFinanceCategoryDetailed === 'TRANSFER_IN_ACCOUNT_TRANSFER' ||
+      transaction.personalFinanceCategoryDetailed === 'TRANSFER_IN_SAVINGS')
+  ) return true;
+  // Legacy Plaid category array fallback
   if (
     transaction.category.length >= 2 &&
     transaction.category[0]?.toLowerCase() === 'transfer' &&
     transaction.category[1]?.toLowerCase() === 'credit card'
-  ) {
-    return true;
-  }
-  // Name-based fallback for credit card payments
+  ) return true;
+  // Name-based fallback
   const n = transaction.name.toLowerCase();
   return n.includes('credit card payment') || n.includes('autopay');
 }

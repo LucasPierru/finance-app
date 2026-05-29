@@ -3,9 +3,10 @@ import { Products } from "plaid";
 import { assertPlaidConfigured, normalizePlaidCountryCode, plaidClient } from "@lib/plaid";
 import { getAuthenticatedUser } from "@middleware/auth";
 import type { BankAccount, BankTransaction, StoredBankState } from "@lib/types";
-import type { CreateLinkTokenBody, ExchangePublicTokenBody, TransactionFilters, UpdateTransactionBody } from "@finance-app/shared-types";
+import type { CreateLinkTokenBody, CreateManualTransactionBody, ExchangePublicTokenBody, TransactionFilters, UpdateTransactionBody } from "@finance-app/shared-types";
 import {
   clearStoredBankState,
+  createManualTransaction,
   deleteTransaction,
   getBankConnectionState,
   getPagedTransactions,
@@ -46,8 +47,13 @@ function mapTransaction(transaction: any): BankTransaction {
     category: transaction.category ?? [],
     pending: transaction.pending,
     flow: plaidAmount < 0 ? 'income' : 'expense',
+    personalFinanceCategory: transaction.personal_finance_category?.primary ?? null,
+    personalFinanceCategoryDetailed: transaction.personal_finance_category?.detailed ?? null,
     categoryId: null,
     categoryName: null,
+    subCategoryId: null,
+    subCategoryName: null,
+    isInternal: false,
   };
 }
 
@@ -76,6 +82,7 @@ async function fetchTransactions(accessToken: string): Promise<{ cursor: string 
       access_token: accessToken,
       cursor: cursor ?? undefined,
       count: 100,
+      options: { include_personal_finance_category: true },
     });
 
     transactions = transactions.concat(syncResponse.data.added.map(mapTransaction));
@@ -99,6 +106,7 @@ async function syncTransactionsForState(
       access_token: state.accessToken,
       cursor: cursor ?? undefined,
       count: 100,
+      options: { include_personal_finance_category: true },
     });
 
     const added = response.data.added.map(mapTransaction);
@@ -147,7 +155,7 @@ plaidRouter.get(
   ) => {
     try {
       const userId = getAuthenticatedUser(req).userId;
-      const { month, flow, search, minAmount, maxAmount } = req.query;
+      const { month, flow, search, minAmount, maxAmount, categoryId, subCategoryId } = req.query;
 
       const filters: TransactionFilters = {};
       if (month && /^\d{4}-\d{2}$/.test(month)) filters.month = month;
@@ -161,6 +169,8 @@ plaidRouter.get(
         const n = parseFloat(maxAmount);
         if (!Number.isNaN(n) && n >= 0) filters.maxAmount = n;
       }
+      if (categoryId) filters.categoryId = categoryId;
+      if (subCategoryId) filters.subCategoryId = subCategoryId;
 
       const result = await getTransactionSummary(userId, filters);
       res.json(result);
@@ -179,7 +189,7 @@ plaidRouter.get(
   ) => {
     try {
       const userId = getAuthenticatedUser(req).userId;
-      const { month, flow, search, minAmount, maxAmount, page: pageStr, pageSize: pageSizeStr } = req.query;
+      const { month, flow, search, minAmount, maxAmount, categoryId, subCategoryId, page: pageStr, pageSize: pageSizeStr, sortBy: sortByRaw, sortDir: sortDirRaw } = req.query;
 
       const page = Math.max(1, parseInt(pageStr ?? "1", 10) || 1);
       const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeStr ?? "20", 10) || 20));
@@ -196,9 +206,51 @@ plaidRouter.get(
         const n = parseFloat(maxAmount);
         if (!Number.isNaN(n) && n >= 0) filters.maxAmount = n;
       }
+      if (categoryId) filters.categoryId = categoryId;
+      if (subCategoryId) filters.subCategoryId = subCategoryId;
+      if (sortByRaw === "date" || sortByRaw === "name" || sortByRaw === "amount") filters.sortBy = sortByRaw;
+      if (sortDirRaw === "asc" || sortDirRaw === "desc") filters.sortDir = sortDirRaw;
 
       const result = await getPagedTransactions(userId, filters, page, pageSize);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+plaidRouter.post(
+  "/transactions",
+  async (req: Request<Record<string, string>, object, CreateManualTransactionBody>, res, next) => {
+    try {
+      const { userId } = getAuthenticatedUser(req);
+      const { name, date, amount, flow, categoryId, subCategoryId } = req.body ?? {};
+
+      const trimmedName = String(name ?? "").trim();
+      if (!trimmedName) { res.status(400).json({ message: "name is required" }); return; }
+
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        res.status(400).json({ message: "date must be YYYY-MM-DD" }); return;
+      }
+
+      const parsedAmount = parseFloat(String(amount ?? ""));
+      if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+        res.status(400).json({ message: "amount must be a non-negative number" }); return;
+      }
+
+      if (flow !== "income" && flow !== "expense") {
+        res.status(400).json({ message: "flow must be 'income' or 'expense'" }); return;
+      }
+
+      const tx = await createManualTransaction(userId, {
+        name: trimmedName,
+        date: String(date),
+        amount: parsedAmount,
+        flow,
+        categoryId: categoryId ?? null,
+        subCategoryId: subCategoryId ?? null,
+      });
+      res.status(201).json(tx);
     } catch (error) {
       next(error);
     }
@@ -211,7 +263,7 @@ plaidRouter.patch(
     try {
       const { userId } = getAuthenticatedUser(req);
       const { id } = req.params;
-      const { categoryId, flow, applyToSimilar } = req.body;
+      const { categoryId, subCategoryId, flow, applyToSimilar, isInternal } = req.body;
 
       if (flow !== undefined && flow !== "income" && flow !== "expense") {
         res.status(400).json({ message: "flow must be 'income' or 'expense'" });
@@ -219,10 +271,10 @@ plaidRouter.patch(
       }
 
       if (applyToSimilar) {
-        await bulkUpdateTransactionsByMerchant(userId, id, categoryId, flow);
+        await bulkUpdateTransactionsByMerchant(userId, id, categoryId, flow, isInternal, subCategoryId);
       }
 
-      const updated = await updateTransactionOverride(userId, id, categoryId, flow);
+      const updated = await updateTransactionOverride(userId, id, categoryId, flow, isInternal, subCategoryId);
       res.json(updated);
     } catch (error) {
       next(error);

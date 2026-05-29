@@ -3,6 +3,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import type { Snippet } from "svelte";
   import "../app.css";
   import AppSidebar from "$lib/components/AppSidebar.svelte";
@@ -10,6 +11,9 @@
   import { initializeAuth } from "$lib/stores/auth";
   import { initializeTheme } from "$lib/stores/theme";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
+  import { bankState as bankingStore, syncBankData } from "$lib/stores/banking";
+
+  const SYNC_THROTTLE_MS = 5 * 60 * 1000;
 
   let { children }: { children: Snippet } = $props();
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
@@ -64,11 +68,34 @@
     return "";
   });
 
+  function shouldSync(lastSyncAt: string | null): boolean {
+    const lastSync = lastSyncAt ? new Date(lastSyncAt).getTime() : 0;
+    return Date.now() - lastSync > SYNC_THROTTLE_MS;
+  }
+
   onMount(() => {
     void (async () => {
       initializeTheme();
       await initializeAuth();
+
+      // Sync on initial load if bank is connected and data is stale
+      const initial = page.data.initialBankState;
+      if (initial?.connected && shouldSync(initial.lastSyncAt)) {
+        void syncBankData();
+      }
     })();
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      const state = get(bankingStore);
+      if (!state.connected) return;
+      if (shouldSync(state.lastSyncAt)) {
+        void syncBankData();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   });
 </script>
 

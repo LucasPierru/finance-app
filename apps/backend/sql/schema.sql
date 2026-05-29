@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -22,6 +23,18 @@ CREATE TABLE IF NOT EXISTS categories (
   UNIQUE (type, name)
 );
 
+CREATE TABLE IF NOT EXISTS subcategories (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  name TEXT NOT NULL,
+  keywords TEXT[] NOT NULL DEFAULT '{}'::text[],
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS subcategories_category_idx ON subcategories(category_id);
+
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -40,12 +53,20 @@ CREATE TABLE IF NOT EXISTS transactions (
   iso_currency_code TEXT,
   plaid_category JSONB NOT NULL DEFAULT '[]'::jsonb,
   pending BOOLEAN NOT NULL DEFAULT FALSE,
+  personal_finance_category TEXT,
+  personal_finance_category_detailed TEXT,
+  is_internal BOOLEAN NOT NULL DEFAULT FALSE,
+  sub_category_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS transactions_user_source_idx ON transactions(user_id, source);
 CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions(user_id, date DESC);
+CREATE INDEX IF NOT EXISTS transactions_category_idx ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS transactions_sub_category_idx ON transactions(sub_category_id);
+CREATE INDEX IF NOT EXISTS transactions_merchant_trgm_idx ON transactions USING GIN (LOWER(COALESCE(merchant_name, name)) gin_trgm_ops);
+
 
 CREATE TABLE IF NOT EXISTS investment_settings (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -93,6 +114,7 @@ CREATE TABLE IF NOT EXISTS plaid_items (
 CREATE TABLE IF NOT EXISTS plaid_accounts (
   account_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES plaid_items(item_id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   official_name TEXT,
   mask TEXT,
@@ -104,6 +126,7 @@ CREATE TABLE IF NOT EXISTS plaid_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS plaid_accounts_user_idx ON plaid_accounts(user_id);
+CREATE INDEX IF NOT EXISTS plaid_accounts_item_idx ON plaid_accounts(item_id);
 
 
 

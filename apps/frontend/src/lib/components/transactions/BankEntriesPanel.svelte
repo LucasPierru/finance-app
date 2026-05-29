@@ -7,9 +7,9 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
-  import { SlidersHorizontal, Pencil, Trash2, LoaderCircle } from "lucide-svelte";
+  import { SlidersHorizontal, Pencil, Trash2, LoaderCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
+  import { httpPostManualTransaction, httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
 
   type Mode = "transactions" | "recurring";
@@ -26,7 +26,10 @@
     amount: number;
     isoCurrencyCode: string | null;
     categoryId: string | null;
+    subCategoryId?: string | null;
+    subCategoryName?: string | null;
     isTransfer?: boolean;
+    isInternal?: boolean;
   }
 
   interface RecurringEntry {
@@ -45,6 +48,10 @@
     search: string;
     minAmount: string;
     maxAmount: string;
+    categoryId: string;
+    subCategoryId: string;
+    sortBy: string;
+    sortDir: string;
   }
 
   let {
@@ -59,13 +66,15 @@
     serverPage = 1,
     serverTotalPages = 1,
     serverTotal = 0,
-    filters = { flow: "", search: "", minAmount: "", maxAmount: "" },
+    filters = { flow: "", search: "", minAmount: "", maxAmount: "", categoryId: "", subCategoryId: "", sortBy: "", sortDir: "" },
     onRefresh,
     onModeChange,
     onPageChange,
     onFilterChange,
     onSearchInput,
+    onTransactionCreated,
     onTransactionUpdated,
+    onTransactionDeleted,
   }: {
     connected: boolean;
     synced: boolean;
@@ -84,6 +93,7 @@
     onPageChange?: (page: number) => void;
     onFilterChange?: (patch: Record<string, string>) => void;
     onSearchInput?: (value: string) => void;
+    onTransactionCreated?: () => void;
     onTransactionUpdated?: (tx: TransactionItem) => void;
     onTransactionDeleted?: (transactionId: string) => void;
   } = $props();
@@ -125,28 +135,164 @@
     recurringPage = 1;
   }
 
-  const hasActiveFilters = $derived(
-    filters.flow !== "" || filters.search !== "" || filters.minAmount !== "" || filters.maxAmount !== "",
+  const activeFilterCount = $derived(
+    [filters.flow, filters.search, filters.minAmount, filters.maxAmount, filters.categoryId, filters.subCategoryId].filter(Boolean).length,
   );
+  const hasActiveFilters = $derived(activeFilterCount > 0);
 
-  let showFilters = $state(false);
+  // ── Filter modal state ────────────────────────────────────────────────────
+  let filterModalOpen = $state(false);
+  let draftSearch = $state("");
+  let draftFlow = $state("");
+  let draftMinAmount = $state("");
+  let draftMaxAmount = $state("");
+  let draftCategoryId = $state("");
+  let draftSubCategoryId = $state("");
 
-  // ── Modal state ────────────────────────────────────────────────────────────
+  const draftSubCategoryOptions = $derived(categories.find((c) => c.id === draftCategoryId)?.subCategories ?? []);
+
+  function openFilterModal() {
+    draftSearch = filters.search;
+    draftFlow = filters.flow;
+    draftMinAmount = filters.minAmount;
+    draftMaxAmount = filters.maxAmount;
+    draftCategoryId = filters.categoryId;
+    draftSubCategoryId = filters.subCategoryId;
+    filterModalOpen = true;
+  }
+
+  function applyFilters() {
+    onFilterChange?.({
+      search: draftSearch,
+      flow: draftFlow,
+      minAmount: draftMinAmount,
+      maxAmount: draftMaxAmount,
+      categoryId: draftCategoryId,
+      subCategoryId: draftSubCategoryId,
+    });
+    filterModalOpen = false;
+  }
+
+  function clearAndCloseFilters() {
+    onFilterChange?.({ search: "", flow: "", minAmount: "", maxAmount: "", categoryId: "", subCategoryId: "" });
+    filterModalOpen = false;
+  }
+
+  // ── Create manual transaction modal ──────────────────────────────────────
+  let createModalOpen = $state(false);
+  let createName = $state("");
+  let createDate = $state("");
+  let createAmount = $state("");
+  let createFlow = $state<"income" | "expense">("expense");
+  let createCategoryId = $state("");
+  let createSubCategoryId = $state("");
+  let createSelectedValue = $state("");
+  let createSaving = $state(false);
+
+  const createFlowCategories = $derived(categories.filter((c) => c.type === createFlow));
+
+  function openCreateModal() {
+    createName = "";
+    createDate = new Date().toISOString().slice(0, 10);
+    createAmount = "";
+    createFlow = "expense";
+    createCategoryId = "";
+    createSubCategoryId = "";
+    createSelectedValue = "";
+    createModalOpen = true;
+  }
+
+  function handleCreateCategorySelect(value: string) {
+    createSelectedValue = value;
+    if (!value) { createCategoryId = ""; createSubCategoryId = ""; return; }
+    let foundParent: string | null = null;
+    for (const cat of categories) {
+      if (cat.subCategories.some((s) => s.id === value)) { foundParent = cat.id; break; }
+    }
+    if (foundParent) { createCategoryId = foundParent; createSubCategoryId = value; }
+    else { createCategoryId = value; createSubCategoryId = ""; }
+  }
+
+  async function saveCreate() {
+    const trimmedName = createName.trim();
+    const parsedAmount = parseFloat(createAmount);
+    if (!trimmedName || !createDate || Number.isNaN(parsedAmount) || parsedAmount <= 0) return;
+    createSaving = true;
+    try {
+      await httpPostManualTransaction({
+        name: trimmedName,
+        date: createDate,
+        amount: parsedAmount,
+        flow: createFlow,
+        categoryId: createCategoryId || null,
+        subCategoryId: createSubCategoryId || null,
+      });
+      createModalOpen = false;
+      onTransactionCreated?.();
+    } finally {
+      createSaving = false;
+    }
+  }
+
+  // ── Sorting ───────────────────────────────────────────────────────────────
+  function handleSort(col: string) {
+    if (filters.sortBy === col) {
+      if (filters.sortDir === "desc") {
+        onFilterChange?.({ sortBy: col, sortDir: "asc" });
+      } else {
+        onFilterChange?.({ sortBy: "", sortDir: "" });
+      }
+    } else {
+      onFilterChange?.({ sortBy: col, sortDir: "desc" });
+    }
+  }
+
+  // ── Edit / Delete modal state ─────────────────────────────────────────────
   let modalTx = $state<TransactionItem | null>(null);
   let modalMode = $state<"edit" | "delete" | null>(null);
   let editCategoryId = $state("");
+  let editSubCategoryId = $state("");
   let editFlow = $state<"income" | "expense">("expense");
+  let editIsInternal = $state(false);
   let editSaving = $state(false);
   let applyToSimilar = $state(false);
   let deleteDeleting = $state(false);
 
-  const editableCategories = $derived(categories.filter((c) => c.type === editFlow));
+  const editFlowCategories = $derived(categories.filter((c) => c.type === editFlow));
+
+  let editSelectedValue = $state("");
+
+  function handleCategorySelect(value: string) {
+    editSelectedValue = value;
+    if (!value) {
+      editCategoryId = "";
+      editSubCategoryId = "";
+      return;
+    }
+    let foundParent: string | null = null;
+    for (const cat of categories) {
+      if (cat.subCategories.some((s) => s.id === value)) {
+        foundParent = cat.id;
+        break;
+      }
+    }
+    if (foundParent) {
+      editCategoryId = foundParent;
+      editSubCategoryId = value;
+    } else {
+      editCategoryId = value;
+      editSubCategoryId = "";
+    }
+  }
 
   function openEditModal(tx: TransactionItem) {
     modalTx = tx;
     modalMode = "edit";
     editCategoryId = tx.categoryId ?? tx.resolvedCategoryId ?? "";
+    editSubCategoryId = tx.subCategoryId ?? "";
+    editSelectedValue = tx.subCategoryId ?? tx.categoryId ?? tx.resolvedCategoryId ?? "";
     editFlow = tx.flow;
+    editIsInternal = tx.isInternal ?? false;
     applyToSimilar = false;
   }
 
@@ -166,7 +312,9 @@
     try {
       const updated = await httpPatchTransaction<TransactionItem>(modalTx.transactionId, {
         categoryId: editCategoryId || null,
+        subCategoryId: editSubCategoryId || null,
         flow: editFlow,
+        isInternal: editIsInternal,
         applyToSimilar,
       });
       onTransactionUpdated?.(updated);
@@ -187,11 +335,6 @@
     } finally {
       deleteDeleting = false;
     }
-  }
-
-  function clearFilters() {
-    onFilterChange?.({ flow: "", search: "", minAmount: "", maxAmount: "" });
-    onSearchInput?.("");
   }
 </script>
 
@@ -222,12 +365,13 @@
         <Button variant={mode === "recurring" ? "default" : "outline"} size="sm" onclick={() => switchMode("recurring")}
           >Recurring</Button
         >
-        {#if connected && mode === "transactions" && hasSyncedData}
-          <Button variant={showFilters ? "default" : "outline"} size="sm" onclick={() => (showFilters = !showFilters)}>
+        {#if mode === "transactions"}
+          <Button variant="outline" size="sm" onclick={openCreateModal}>+ Add</Button>
+        {/if}
+        {#if mode === "transactions" && (hasSyncedData || serverTotal > 0)}
+          <Button variant={hasActiveFilters ? "default" : "outline"} size="sm" onclick={openFilterModal}>
             <SlidersHorizontal class="mr-1.5 h-3.5 w-3.5" />
-            Filters{hasActiveFilters
-              ? ` (${[filters.flow, filters.search, filters.minAmount, filters.maxAmount].filter(Boolean).length})`
-              : ""}
+            Filters{hasActiveFilters ? ` (${activeFilterCount})` : ""}
           </Button>
         {/if}
         {#if connected}
@@ -246,73 +390,22 @@
 
   <CardContent class="p-0">
     {#if mode === "transactions"}
-      {#if !connected}
-        <p class="px-5 py-10 text-center text-sm text-slate-500">No bank connected yet.</p>
-      {:else if !synced}
+      {#if serverTotal === 0 && !connected}
+        <p class="px-5 py-10 text-center text-sm text-slate-500">
+          No bank connected. Use <strong>+ Add</strong> to log transactions manually.
+        </p>
+      {:else if serverTotal === 0 && !synced}
         <p class="px-5 py-10 text-center text-sm text-slate-500">Syncing bank data...</p>
-      {:else if !hasSyncedData}
+      {:else if serverTotal === 0 && !hasSyncedData}
         <p class="px-5 py-10 text-center text-sm text-slate-500">No synced transactions yet. Click refresh.</p>
       {:else}
-        <!-- Filter bar -->
-        {#if showFilters}
-          <div class="flex flex-wrap items-end gap-3 border-b border-[#252a3a] px-5 py-4">
-            <div class="flex min-w-0 flex-1 flex-col gap-1">
-              <Label class="text-xs text-slate-500">Search</Label>
-              <Input
-                class="h-8 text-sm"
-                placeholder="Name or merchant..."
-                value={filters.search}
-                oninput={(e) => onSearchInput?.((e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="flex flex-col gap-1">
-              <Label class="text-xs text-slate-500">Flow</Label>
-              <Select
-                class="h-8 w-28"
-                value={filters.flow}
-                onchange={(e) => onFilterChange?.({ flow: (e.target as HTMLSelectElement).value })}
-              >
-                <option value="">All</option>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-              </Select>
-            </div>
-            <div class="flex flex-col gap-1">
-              <Label class="text-xs text-slate-500">Min $</Label>
-              <Input
-                class="h-8 w-24 text-sm"
-                type="number"
-                min="0"
-                placeholder="0"
-                value={filters.minAmount}
-                onchange={(e) => onFilterChange?.({ minAmount: (e.target as HTMLInputElement).value })}
-              />
-            </div>
-            <div class="flex flex-col gap-1">
-              <Label class="text-xs text-slate-500">Max $</Label>
-              <Input
-                class="h-8 w-24 text-sm"
-                type="number"
-                min="0"
-                placeholder="∞"
-                value={filters.maxAmount}
-                onchange={(e) => onFilterChange?.({ maxAmount: (e.target as HTMLInputElement).value })}
-              />
-            </div>
-            {#if hasActiveFilters}
-              <Button variant="ghost" size="sm" class="h-8 text-xs text-slate-400" onclick={clearFilters}>
-                Clear filters
-              </Button>
-            {/if}
-          </div>
-        {/if}
-
         <div class="space-y-4 px-5 pb-4 pt-4">
           {#if transactions.length === 0}
             <p class="rounded-lg border border-[#252a3a] px-5 py-8 text-center text-sm text-slate-500">
               No transactions found.
             </p>
           {:else}
+            <!-- Mobile cards -->
             <div class="space-y-3 md:hidden">
               {#each transactions as tx (tx.transactionId)}
                 <article class="rounded-lg border border-[#252a3a] bg-[#13161e] p-3">
@@ -322,6 +415,9 @@
                       <p class="text-xs text-slate-500">{tx.merchantName ?? "-"}</p>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
+                      {#if tx.isInternal}
+                        <span class="rounded-full bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-400">Internal</span>
+                      {/if}
                       {#if tx.isTransfer}
                         <span class="rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400">Transfer</span>
                       {/if}
@@ -335,10 +431,7 @@
                     <p class="text-right text-slate-300">{tx.date}</p>
                     <p class="text-slate-500">Category</p>
                     <p class="text-right text-slate-300">
-                      {tx.resolvedCategory}
-                      {#if tx.categoryId}
-                        <span class="ml-1 text-slate-500">(edited)</span>
-                      {/if}
+                      {tx.resolvedCategory}{tx.subCategoryName ? ` · ${tx.subCategoryName}` : ""}
                     </p>
                     <p class="text-slate-500">Pending</p>
                     <p class="text-right text-slate-300">{tx.pending ? "Yes" : "No"}</p>
@@ -362,45 +455,86 @@
               {/each}
             </div>
 
-            <div class="hidden overflow-x-auto md:block">
-              <Table>
+            <!-- Desktop table -->
+            <div class="hidden md:block">
+              <Table class="table-fixed w-full">
                 <TableHeader class="border-b border-[#252a3a] bg-[#1c2030]">
                   <TableRow class="border-none">
-                    <TableHead class="px-5 py-3">Date</TableHead>
-                    <TableHead class="px-5 py-3">Name</TableHead>
-                    <TableHead class="px-5 py-3">Merchant</TableHead>
-                    <TableHead class="px-5 py-3">Category</TableHead>
-                    <TableHead class="px-5 py-3">Pending</TableHead>
-                    <TableHead class="px-5 py-3">Amount</TableHead>
-                    <TableHead class="px-5 py-3"></TableHead>
+                    <TableHead class="w-[110px] px-3 py-3">
+                      <button
+                        class="flex items-center gap-1 text-slate-400 transition-colors hover:text-slate-200"
+                        onclick={() => handleSort("date")}
+                      >
+                        Date
+                        {#if filters.sortBy === "date"}
+                          {#if filters.sortDir === "asc"}<ArrowUp class="h-3.5 w-3.5" />{:else}<ArrowDown class="h-3.5 w-3.5" />{/if}
+                        {:else}
+                          <ArrowUpDown class="h-3.5 w-3.5 opacity-40" />
+                        {/if}
+                      </button>
+                    </TableHead>
+                    <TableHead class="w-[25%] px-3 py-3">
+                      <button
+                        class="flex items-center gap-1 text-slate-400 transition-colors hover:text-slate-200"
+                        onclick={() => handleSort("name")}
+                      >
+                        Name
+                        {#if filters.sortBy === "name"}
+                          {#if filters.sortDir === "asc"}<ArrowUp class="h-3.5 w-3.5" />{:else}<ArrowDown class="h-3.5 w-3.5" />{/if}
+                        {:else}
+                          <ArrowUpDown class="h-3.5 w-3.5 opacity-40" />
+                        {/if}
+                      </button>
+                    </TableHead>
+                    <TableHead class="w-[20%] px-3 py-3">Merchant</TableHead>
+                    <TableHead class="w-[20%] px-3 py-3">Category</TableHead>
+                    <TableHead class="w-[120px] px-3 py-3 text-right">
+                      <button
+                        class="ml-auto flex items-center gap-1 text-slate-400 transition-colors hover:text-slate-200"
+                        onclick={() => handleSort("amount")}
+                      >
+                        Amount
+                        {#if filters.sortBy === "amount"}
+                          {#if filters.sortDir === "asc"}<ArrowUp class="h-3.5 w-3.5" />{:else}<ArrowDown class="h-3.5 w-3.5" />{/if}
+                        {:else}
+                          <ArrowUpDown class="h-3.5 w-3.5 opacity-40" />
+                        {/if}
+                      </button>
+                    </TableHead>
+                    <TableHead class="w-[76px] px-2 py-3"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {#each transactions as tx (tx.transactionId)}
                     <TableRow class="hover:bg-[#1c2030]">
-                      <TableCell class="whitespace-nowrap px-5 py-3 text-slate-400">{tx.date}</TableCell>
-                      <TableCell class="px-5 py-3 text-slate-200">{tx.name}</TableCell>
-                      <TableCell class="px-5 py-3 text-slate-400">{tx.merchantName ?? "-"}</TableCell>
-                      <TableCell class="px-5 py-3 text-slate-400">
-                        <span>
-                          {tx.resolvedCategory}
-                          {#if tx.categoryId}
-                            <span class="ml-1 text-xs text-slate-600">(edited)</span>
+                      <TableCell class="whitespace-nowrap px-3 py-3 text-slate-400">{tx.date}</TableCell>
+                      <TableCell class="truncate px-3 py-3 text-slate-200" title={tx.name}>{tx.name}</TableCell>
+                      <TableCell class="truncate px-3 py-3 text-slate-400" title={tx.merchantName ?? ""}
+                        >{tx.merchantName ?? "-"}</TableCell
+                      >
+                      <TableCell class="px-3 py-3 text-slate-400">
+                        <span class="flex items-center gap-1.5">
+                          {tx.resolvedCategory}{tx.subCategoryName ? ` · ${tx.subCategoryName}` : ""}
+                          {#if tx.isInternal}
+                            <span class="rounded-full bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-400"
+                              >Internal</span
+                            >
                           {/if}
                           {#if tx.isTransfer}
-                            <span class="ml-1 rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400"
+                            <span class="rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400"
                               >Transfer</span
                             >
                           {/if}
                         </span>
                       </TableCell>
-                      <TableCell class="px-5 py-3 text-slate-400">{tx.pending ? "Yes" : "No"}</TableCell>
                       <TableCell
-                        class="px-5 py-3 font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}"
+                        class="whitespace-nowrap px-3 py-3 text-right font-semibold {tx.flow === 'income'
+                          ? 'text-emerald-400'
+                          : 'text-rose-400'}"
                       >
                         {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                       </TableCell>
-                      <TableCell class="px-5 py-3">
+                      <TableCell class="px-2 py-3">
                         <div class="flex items-center gap-0.5">
                           <button
                             onclick={() => openEditModal(tx)}
@@ -532,6 +666,162 @@
   </CardContent>
 </Card>
 
+<!-- Create Manual Transaction Modal -->
+<Dialog.Root bind:open={createModalOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>Add Transaction</Dialog.Title>
+      <Dialog.Description>Log a manual transaction not captured by your bank.</Dialog.Description>
+    </Dialog.Header>
+
+    <div class="space-y-4 py-2">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Date</Label>
+          <Input class="h-9" type="date" bind:value={createDate} />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Type</Label>
+          <Select
+            class="h-9"
+            bind:value={createFlow}
+            onchange={() => { createCategoryId = ""; createSubCategoryId = ""; createSelectedValue = ""; }}
+          >
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+          </Select>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Description</Label>
+        <Input class="h-9" placeholder="e.g. Coffee, Cash withdrawal…" bind:value={createName} />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Amount</Label>
+        <Input class="h-9" type="number" min="0" step="0.01" placeholder="0.00" bind:value={createAmount} />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Category <span class="text-slate-600">(optional)</span></Label>
+        <Select
+          class="h-9"
+          value={createSelectedValue}
+          onchange={(e) => handleCreateCategorySelect((e.target as HTMLSelectElement).value)}
+        >
+          <option value="">No category</option>
+          {#each createFlowCategories as cat (cat.id)}
+            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
+            {#each cat.subCategories as sub (sub.id)}
+              <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
+            {/each}
+          {/each}
+        </Select>
+      </div>
+    </div>
+
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => (createModalOpen = false)}>Cancel</Button>
+      <Button
+        onclick={saveCreate}
+        disabled={createSaving || !createName.trim() || !createDate || !createAmount}
+      >
+        {createSaving ? "Saving…" : "Add Transaction"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Filter Modal -->
+<Dialog.Root bind:open={filterModalOpen}>
+  <Dialog.Content class="sm:max-w-md">
+    <Dialog.Header>
+      <Dialog.Title>Filter Transactions</Dialog.Title>
+      <Dialog.Description>Narrow down transactions by type, category, or amount.</Dialog.Description>
+    </Dialog.Header>
+
+    <div class="space-y-4 py-2">
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Search</Label>
+        <Input
+          class="h-9"
+          placeholder="Name or merchant..."
+          bind:value={draftSearch}
+        />
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Type</Label>
+          <Select class="h-9" bind:value={draftFlow}>
+            <option value="">All</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </Select>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Category</Label>
+          <Select
+            class="h-9"
+            bind:value={draftCategoryId}
+            onchange={() => (draftSubCategoryId = "")}
+          >
+            <option value="">All</option>
+            {#each categories as cat (cat.id)}
+              <option value={cat.id}>{cat.name}</option>
+            {/each}
+          </Select>
+        </div>
+      </div>
+
+      {#if draftSubCategoryOptions.length > 0}
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Sub-category</Label>
+          <Select class="h-9" bind:value={draftSubCategoryId}>
+            <option value="">All</option>
+            {#each draftSubCategoryOptions as sub (sub.id)}
+              <option value={sub.id}>{sub.name}</option>
+            {/each}
+          </Select>
+        </div>
+      {/if}
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Min amount ($)</Label>
+          <Input
+            class="h-9"
+            type="number"
+            min="0"
+            placeholder="0"
+            bind:value={draftMinAmount}
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label class="text-sm text-slate-400">Max amount ($)</Label>
+          <Input
+            class="h-9"
+            type="number"
+            min="0"
+            placeholder="No limit"
+            bind:value={draftMaxAmount}
+          />
+        </div>
+      </div>
+    </div>
+
+    <Dialog.Footer class="gap-2 sm:gap-0">
+      {#if hasActiveFilters}
+        <Button variant="ghost" class="mr-auto text-slate-400" onclick={clearAndCloseFilters}>Clear all</Button>
+      {/if}
+      <Button variant="outline" onclick={() => (filterModalOpen = false)}>Cancel</Button>
+      <Button onclick={applyFilters}>Apply</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
 <!-- Edit Dialog -->
 <Dialog.Root
   open={modalMode === "edit" && modalTx !== null}
@@ -547,20 +837,39 @@
     <div class="space-y-4 py-2">
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Type</Label>
-        <Select bind:value={editFlow} class="h-10">
+        <Select
+          bind:value={editFlow}
+          onchange={() => {
+            editCategoryId = "";
+            editSubCategoryId = "";
+            editSelectedValue = "";
+          }}
+          class="h-10"
+        >
           <option value="expense">Expense</option>
           <option value="income">Income</option>
         </Select>
       </div>
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Category</Label>
-        <Select bind:value={editCategoryId} class="h-10">
+        <Select
+          value={editSelectedValue}
+          onchange={(e) => handleCategorySelect((e.target as HTMLSelectElement).value)}
+          class="h-10"
+        >
           <option value="">Auto-detect</option>
-          {#each editableCategories as cat (cat.id)}
-            <option value={cat.id}>{cat.name}</option>
+          {#each editFlowCategories as cat (cat.id)}
+            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
+            {#each cat.subCategories as sub (sub.id)}
+              <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
+            {/each}
           {/each}
         </Select>
       </div>
+      <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
+        <input type="checkbox" bind:checked={editIsInternal} class="rounded" />
+        Mark as internal (exclude from home page summary)
+      </label>
       <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
         <input type="checkbox" bind:checked={applyToSimilar} class="rounded" />
         Apply to all transactions from the same merchant

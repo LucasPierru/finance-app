@@ -9,18 +9,37 @@
   import BudgetPlanForm from "$lib/components/BudgetPlanForm.svelte";
   import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
-  import type { BudgetPlan, BudgetPlanItem, FinanceCategory } from "@finance-app/shared-types";
-
-  type Period = "weekly" | "monthly" | "yearly";
+  import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
+  import { toMonthly, periodLabel, itemProgress } from "$lib/utils/budget";
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
   const allCategories = $derived(page.data.allCategories ?? []);
   const financeView = $derived(getEffectiveFinanceView(financeState, bankState, allCategories));
+  const currentMonthSummary = $derived(page.data.currentMonthSummary);
 
-  const monthlyIncome = $derived(financeView.totalRevenue);
-  const monthlyExpenses = $derived(financeView.totalCosts);
-  const monthlySurplus = $derived(financeView.monthlySurplus);
+  const monthlyIncome = $derived(currentMonthSummary?.totalIncome ?? financeView.totalRevenue);
+  const monthlyExpenses = $derived(currentMonthSummary?.totalExpenses ?? financeView.totalCosts);
+  const monthlySurplus = $derived(monthlyIncome - monthlyExpenses);
+
+  // Build a costs list from the DB-backed current month breakdown so item progress
+  // bars use the same calendar-month data as the home page summary.
+  const currentMonthCosts = $derived.by<import("$lib/stores/finance").FinanceItem[]>(() => {
+    const breakdown = currentMonthSummary?.categoryBreakdown ?? [];
+    if (breakdown.length === 0) return financeView.costs;
+    return breakdown.map((b, i) => {
+      const cat = allCategories.find((c) => c.type === "expense" && c.name === b.category);
+      return {
+        id: `month-${i}`,
+        name: b.category,
+        category: b.category,
+        categoryId: cat?.id,
+        amount: b.totalAmount,
+        rawAmount: b.totalAmount.toFixed(2),
+        frequency: "monthly" as const,
+      };
+    });
+  });
 
   let budgetPlans = $state<BudgetPlan[]>(page.data.budgetPlans ?? []);
   const expenseCategories = $derived<FinanceCategory[]>(page.data.expenseCategories ?? []);
@@ -80,27 +99,6 @@
     }).format(n);
   }
 
-  function toMonthly(amount: number, period: Period): number {
-    if (period === "weekly") return (amount * 52) / 12;
-    if (period === "yearly") return amount / 12;
-    return amount;
-  }
-
-  function periodLabel(period: Period): string {
-    return period === "weekly" ? "/ wk" : period === "yearly" ? "/ yr" : "/ mo";
-  }
-
-  function spentForItem(item: BudgetPlanItem): number {
-    if (!item.categoryId) return 0;
-    return financeView.costs.filter((c) => c.categoryId === item.categoryId).reduce((sum, c) => sum + c.amount, 0);
-  }
-
-  function itemProgress(item: BudgetPlanItem): { spent: number; monthly: number; pct: number } {
-    const monthly = toMonthly(item.amount, item.period);
-    const spent = spentForItem(item);
-    const pct = monthly > 0 ? Math.min((spent / monthly) * 100, 100) : 0;
-    return { spent, monthly, pct };
-  }
 </script>
 
 <div class="animate-fade-up space-y-4 lg:space-y-6">
@@ -108,19 +106,19 @@
   <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
     <Card>
       <CardHeader class="pb-2">
-        <CardDescription>Monthly income</CardDescription>
+        <CardDescription>Income this month</CardDescription>
         <CardTitle class="text-2xl text-emerald-400">{fmt(monthlyIncome)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
-        <CardDescription>Monthly expenses</CardDescription>
+        <CardDescription>Spent this month</CardDescription>
         <CardTitle class="text-2xl text-rose-400">{fmt(monthlyExpenses)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
-        <CardDescription>Available to budget</CardDescription>
+        <CardDescription>Net this month</CardDescription>
         <CardTitle class="text-2xl {monthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
           {fmt(monthlySurplus)}
         </CardTitle>
@@ -146,9 +144,9 @@
     {/if}
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div class="lg:col-span-2">
-        <BudgetBarChart {selectedPlan} costs={financeView.costs} />
+        <BudgetBarChart {selectedPlan} costs={currentMonthCosts} />
       </div>
-      <BudgetDonutChart {selectedPlan} costs={financeView.costs} />
+      <BudgetDonutChart {selectedPlan} costs={currentMonthCosts} />
     </div>
   {/if}
 
@@ -259,7 +257,7 @@
               {:else}
                 <div class="space-y-3">
                   {#each plan.items as item (item.id)}
-                    {@const { spent, monthly, pct } = itemProgress(item)}
+                    {@const { spent, monthly, pct, over } = itemProgress(item, currentMonthCosts)}
                     <div class="space-y-1.5">
                       <div class="flex items-center justify-between text-sm">
                         <span class="text-slate-300">
@@ -274,7 +272,7 @@
                       </div>
                       <div class="h-1.5 w-full rounded-full bg-slate-800">
                         <div
-                          class="h-1.5 rounded-full transition-all {pct >= 100
+                          class="h-1.5 rounded-full transition-all {over
                             ? 'bg-rose-500'
                             : pct >= 80
                               ? 'bg-amber-400'

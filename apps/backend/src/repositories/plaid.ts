@@ -1,15 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { pool } from "@db/pool";
 import { serverEnv } from "@config/env";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "@lib/plaid-token-crypto";
 import type { BankAccount, BankConnectionState, BankTransaction, PlaidConnection, StoredBankState } from "@lib/types";
-import type { TransactionFilters, PagedTransactionsResult } from "@finance-app/shared-types";
+import type { TransactionFilters, PagedTransactionsResult, CreateManualTransactionBody } from "@finance-app/shared-types";
 import { AppError } from "@lib/errors";
 
-export type { TransactionFilters, PagedTransactionsResult };
+export type { TransactionFilters, PagedTransactionsResult, CreateManualTransactionBody };
 
 function mapAccountRow(row: Record<string, unknown>): BankAccount {
   return {
-    accountId: String(row.account_id),
+    accountId: row.account_id != null ? String(row.account_id) : "",
     name: String(row.name),
     officialName: row.official_name ? String(row.official_name) : null,
     mask: row.mask ? String(row.mask) : null,
@@ -24,7 +25,7 @@ function mapAccountRow(row: Record<string, unknown>): BankAccount {
 function mapTransactionRow(row: Record<string, unknown>): BankTransaction {
   return {
     transactionId: String(row.id),
-    accountId: String(row.account_id),
+    accountId: row.account_id != null ? String(row.account_id) : "",
     date: new Date(String(row.date)).toISOString().slice(0, 10),
     name: String(row.name),
     merchantName: row.merchant_name ? String(row.merchant_name) : null,
@@ -33,8 +34,13 @@ function mapTransactionRow(row: Record<string, unknown>): BankTransaction {
     category: Array.isArray(row.plaid_category) ? (row.plaid_category as string[]) : [],
     pending: Boolean(row.pending),
     flow: row.flow as 'income' | 'expense',
+    personalFinanceCategory: row.personal_finance_category ? String(row.personal_finance_category) : null,
+    personalFinanceCategoryDetailed: row.personal_finance_category_detailed ? String(row.personal_finance_category_detailed) : null,
     categoryId: row.category_id ? String(row.category_id) : null,
     categoryName: row.category_name ? String(row.category_name) : null,
+    subCategoryId: row.sub_category_id ? String(row.sub_category_id) : null,
+    subCategoryName: row.sub_category_name ? String(row.sub_category_name) : null,
+    isInternal: Boolean(row.is_internal),
   };
 }
 
@@ -61,8 +67,10 @@ export async function getStoredBankStates(userId: string): Promise<StoredBankSta
     ),
     pool.query(
       `SELECT id, account_id, date, name, merchant_name, amount, iso_currency_code, plaid_category, pending,
-              category_id, flow,
-              (SELECT name FROM categories WHERE id = t.category_id) AS category_name
+              personal_finance_category, personal_finance_category_detailed,
+              category_id, flow, is_internal, sub_category_id,
+              (SELECT name FROM categories WHERE id = t.category_id) AS category_name,
+              (SELECT name FROM subcategories WHERE id = t.sub_category_id) AS sub_category_name
        FROM transactions t
        WHERE user_id = $1 AND source = 'plaid'
        ORDER BY date DESC, id DESC`,
@@ -139,10 +147,12 @@ export async function getBankConnectionState(userId: string): Promise<BankConnec
     ),
     pool.query(
       `SELECT id, account_id, date, name, merchant_name, amount, iso_currency_code, plaid_category, pending,
-              category_id, flow,
-              (SELECT name FROM categories WHERE id = t.category_id) AS category_name
+              personal_finance_category, personal_finance_category_detailed,
+              category_id, flow, is_internal, sub_category_id,
+              (SELECT name FROM categories WHERE id = t.category_id) AS category_name,
+              (SELECT name FROM subcategories WHERE id = t.sub_category_id) AS sub_category_name
        FROM transactions t
-       WHERE user_id = $1 AND source = 'plaid'
+       WHERE user_id = $1 AND (source = 'plaid' OR (source = 'manual' AND t.frequency IS NULL))
        ORDER BY date DESC, id DESC
        LIMIT 200`,
       [userId],
@@ -185,11 +195,37 @@ export async function getBankConnectionState(userId: string): Promise<BankConnec
   };
 }
 
+export async function createManualTransaction(
+  userId: string,
+  data: Required<Pick<CreateManualTransactionBody, "name" | "date" | "amount" | "flow">> & Pick<CreateManualTransactionBody, "categoryId" | "subCategoryId">,
+): Promise<BankTransaction> {
+  const id = randomUUID();
+  const result = await pool.query(
+    `INSERT INTO transactions (id, user_id, source, flow, name, amount, date, category_id, sub_category_id)
+     VALUES ($1, $2, 'manual', $3, $4, $5, $6::date, $7, $8)
+     RETURNING id, account_id, date, name, merchant_name, amount,
+               iso_currency_code, plaid_category, pending,
+               personal_finance_category, personal_finance_category_detailed,
+               category_id, flow, is_internal, sub_category_id`,
+    [id, userId, data.flow, data.name, data.amount, data.date, data.categoryId ?? null, data.subCategoryId ?? null],
+  );
+  const row = result.rows[0];
+  const [catResult, subCatResult] = await Promise.all([
+    row.category_id ? pool.query(`SELECT name FROM categories WHERE id = $1`, [row.category_id]) : Promise.resolve(null),
+    row.sub_category_id ? pool.query(`SELECT name FROM subcategories WHERE id = $1`, [row.sub_category_id]) : Promise.resolve(null),
+  ]);
+  return mapTransactionRow({ ...row, category_name: catResult?.rows[0]?.name ?? null, sub_category_name: subCatResult?.rows[0]?.name ?? null });
+}
+
 export async function getTransactionSummary(
   userId: string,
   filters: TransactionFilters,
 ): Promise<import('@finance-app/shared-types').TransactionSummary> {
-  const conditions: string[] = ["t.user_id = $1", "t.source = 'plaid'"];
+  const conditions: string[] = [
+    "t.user_id = $1",
+    "(t.source = 'plaid' OR (t.source = 'manual' AND t.frequency IS NULL))",
+    "NOT t.is_internal",
+  ];
   const params: unknown[] = [userId];
 
   if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
@@ -213,10 +249,24 @@ export async function getTransactionSummary(
     params.push(filters.maxAmount);
     conditions.push(`t.amount <= $${params.length}`);
   }
+  if (filters.categoryId) {
+    params.push(filters.categoryId);
+    conditions.push(`t.category_id = $${params.length}`);
+  }
+  if (filters.subCategoryId) {
+    params.push(filters.subCategoryId);
+    conditions.push(`t.sub_category_id = $${params.length}`);
+  }
 
   const where = conditions.join(' AND ');
+  // Only exclude credit-card payments and internal account moves that cause double-counting.
+  // Do NOT exclude TRANSFER_OUT broadly — ACH rent/mortgage payments come through as TRANSFER_OUT
+  // but are genuine expenses and should appear in totals.
   const isTransfer = `COALESCE(
-    (LOWER(t.plaid_category->>0) = 'transfer' AND LOWER(t.plaid_category->>1) = 'credit card')
+    t.personal_finance_category_detailed = 'TRANSFER_OUT_CREDIT_CARD_PAYMENT'
+    OR (t.personal_finance_category = 'TRANSFER_IN'
+        AND t.personal_finance_category_detailed IN ('TRANSFER_IN_ACCOUNT_TRANSFER', 'TRANSFER_IN_SAVINGS'))
+    OR (LOWER(t.plaid_category->>0) = 'transfer' AND LOWER(t.plaid_category->>1) = 'credit card')
     OR LOWER(t.name) LIKE '%credit card payment%'
     OR LOWER(t.name) LIKE '%autopay%',
     FALSE
@@ -282,7 +332,10 @@ export async function getPagedTransactions(
   page: number,
   pageSize: number,
 ): Promise<PagedTransactionsResult> {
-  const conditions: string[] = ["t.user_id = $1", "t.source = 'plaid'"];
+  const conditions: string[] = [
+    "t.user_id = $1",
+    "(t.source = 'plaid' OR (t.source = 'manual' AND t.frequency IS NULL))",
+  ];
   const params: unknown[] = [userId];
 
   if (filters.month && /^\d{4}-\d{2}$/.test(filters.month)) {
@@ -311,8 +364,22 @@ export async function getPagedTransactions(
     conditions.push(`t.amount <= $${params.length}`);
   }
 
+  if (filters.categoryId) {
+    params.push(filters.categoryId);
+    conditions.push(`t.category_id = $${params.length}`);
+  }
+
+  if (filters.subCategoryId) {
+    params.push(filters.subCategoryId);
+    conditions.push(`t.sub_category_id = $${params.length}`);
+  }
+
   const where = conditions.join(" AND ");
   const offset = (page - 1) * pageSize;
+
+  const SORT_COL_MAP: Record<string, string> = { date: "t.date", name: "t.name", amount: "t.amount" };
+  const sortCol = (filters.sortBy && SORT_COL_MAP[filters.sortBy]) || "t.date";
+  const sortDirStr = filters.sortDir === "asc" ? "ASC" : "DESC";
 
   params.push(pageSize);
   const limitParam = params.length;
@@ -324,12 +391,14 @@ export async function getPagedTransactions(
     pool.query(
       `SELECT t.id, t.account_id, t.date, t.name, t.merchant_name, t.amount,
               t.iso_currency_code, t.plaid_category, t.pending,
-              t.category_id, t.flow,
-              c.name AS category_name
+              t.personal_finance_category, t.personal_finance_category_detailed,
+              t.category_id, t.flow, t.is_internal, t.sub_category_id,
+              c.name AS category_name,
+              (SELECT name FROM subcategories WHERE id = t.sub_category_id) AS sub_category_name
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
        WHERE ${where}
-       ORDER BY t.date DESC, t.id DESC
+       ORDER BY ${sortCol} ${sortDirStr}, t.id ${sortDirStr}
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       params,
     ),
@@ -445,8 +514,10 @@ export async function upsertStoredBankState(
           merchant_name,
           iso_currency_code,
           plaid_category,
-          pending
-        ) VALUES ($1, $2, 'plaid', $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
+          pending,
+          personal_finance_category,
+          personal_finance_category_detailed
+        ) VALUES ($1, $2, 'plaid', $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13)
         ON CONFLICT (id) DO UPDATE SET
           user_id = EXCLUDED.user_id,
           name = EXCLUDED.name,
@@ -457,6 +528,8 @@ export async function upsertStoredBankState(
           iso_currency_code = EXCLUDED.iso_currency_code,
           plaid_category = EXCLUDED.plaid_category,
           pending = EXCLUDED.pending,
+          personal_finance_category = EXCLUDED.personal_finance_category,
+          personal_finance_category_detailed = EXCLUDED.personal_finance_category_detailed,
           updated_at = NOW()
           -- flow and category_id intentionally not updated to preserve user overrides`,
         [
@@ -471,6 +544,8 @@ export async function upsertStoredBankState(
           transaction.isoCurrencyCode,
           JSON.stringify(transaction.category),
           transaction.pending,
+          transaction.personalFinanceCategory ?? null,
+          transaction.personalFinanceCategoryDetailed ?? null,
         ],
       );
     }
@@ -511,6 +586,79 @@ export async function upsertStoredBankState(
   } finally {
     client.release();
   }
+
+  // Auto-categorize newly uncategorized transactions outside the main transaction
+  // so a failure here doesn't roll back the sync itself.
+  await autoCategorizeMissingTransactions(userId);
+}
+
+/**
+ * Assigns category_id to Plaid transactions that have none, using two passes:
+ * 1. Plaid personal_finance_category → internal category name mapping
+ * 2. Keyword matching on transaction name / merchant name (fallback)
+ * Never overwrites user overrides (only touches rows where category_id IS NULL).
+ */
+async function autoCategorizeMissingTransactions(userId: string): Promise<void> {
+  // Pass 1: assign via Plaid primary category mapping
+  await pool.query(
+    `UPDATE transactions t
+     SET category_id = c.id
+     FROM categories c
+     WHERE t.user_id = $1
+       AND t.source = 'plaid'
+       AND t.category_id IS NULL
+       AND t.personal_finance_category IS NOT NULL
+       AND COALESCE(t.personal_finance_category_detailed, '') != 'TRANSFER_OUT_CREDIT_CARD_PAYMENT'
+       AND NOT (t.personal_finance_category = 'TRANSFER_IN'
+                AND COALESCE(t.personal_finance_category_detailed, '') IN ('TRANSFER_IN_ACCOUNT_TRANSFER', 'TRANSFER_IN_SAVINGS'))
+       AND c.type = t.flow
+       AND c.name = CASE t.personal_finance_category
+         WHEN 'FOOD_AND_DRINK'       THEN 'Food'
+         WHEN 'ENTERTAINMENT'        THEN 'Entertainment'
+         WHEN 'GENERAL_MERCHANDISE'  THEN 'Shopping'
+         WHEN 'HOME_IMPROVEMENT'     THEN 'Housing'
+         WHEN 'MEDICAL'              THEN 'Healthcare'
+         WHEN 'PERSONAL_CARE'        THEN 'Shopping'
+         WHEN 'TRANSPORTATION'       THEN 'Transport'
+         WHEN 'TRAVEL'               THEN 'Transport'
+         WHEN 'LOAN_PAYMENTS'        THEN 'Debt Payments'
+         WHEN 'RENT_AND_UTILITIES'   THEN
+           CASE
+             WHEN t.personal_finance_category_detailed ILIKE '%RENT%'
+               OR t.personal_finance_category_detailed ILIKE '%MORTGAGE%'
+               OR t.personal_finance_category_detailed ILIKE '%HOA%'
+               OR t.personal_finance_category_detailed ILIKE '%HOMEOWNERS%'
+             THEN 'Housing'
+             ELSE 'Utilities'
+           END
+         ELSE NULL
+       END`,
+    [userId],
+  );
+
+  // Pass 2: keyword matching fallback for anything still uncategorized
+  await pool.query(
+    `UPDATE transactions t
+     SET category_id = (
+       SELECT c.id
+       FROM categories c
+       WHERE c.type = t.flow
+         AND EXISTS (
+           SELECT 1 FROM unnest(c.keywords) AS kw
+           WHERE LOWER(t.name) LIKE '%' || LOWER(kw) || '%'
+              OR LOWER(COALESCE(t.merchant_name, '')) LIKE '%' || LOWER(kw) || '%'
+         )
+       ORDER BY c.name
+       LIMIT 1
+     )
+     WHERE t.user_id = $1
+       AND t.source = 'plaid'
+       AND t.category_id IS NULL
+       AND COALESCE(t.personal_finance_category_detailed, '') != 'TRANSFER_OUT_CREDIT_CARD_PAYMENT'
+       AND NOT (t.personal_finance_category = 'TRANSFER_IN'
+                AND COALESCE(t.personal_finance_category_detailed, '') IN ('TRANSFER_IN_ACCOUNT_TRANSFER', 'TRANSFER_IN_SAVINGS'))`,
+    [userId],
+  );
 }
 
 export async function updateTransactionOverride(
@@ -518,27 +666,36 @@ export async function updateTransactionOverride(
   transactionId: string,
   categoryId: string | null | undefined,
   flow: string | null | undefined,
+  isInternal: boolean | null | undefined,
+  subCategoryId: string | null | undefined,
 ): Promise<BankTransaction> {
   const result = await pool.query(
     `UPDATE transactions
      SET category_id = $3,
          flow = COALESCE($4::text, flow),
+         is_internal = COALESCE($5::boolean, is_internal),
+         sub_category_id = $6,
          updated_at = NOW()
-     WHERE id = $1 AND user_id = $2 AND source = 'plaid'
+     WHERE id = $1 AND user_id = $2 AND (source = 'plaid' OR (source = 'manual' AND frequency IS NULL))
      RETURNING id, account_id, date, name, merchant_name, amount,
-               iso_currency_code, plaid_category, pending, category_id, flow`,
-    [transactionId, userId, categoryId ?? null, flow ?? null],
+               iso_currency_code, plaid_category, pending,
+               personal_finance_category, personal_finance_category_detailed,
+               category_id, flow, is_internal, sub_category_id`,
+    [transactionId, userId, categoryId ?? null, flow ?? null, isInternal ?? null, subCategoryId ?? null],
   );
   if ((result.rowCount ?? 0) === 0) {
     throw new AppError(404, "Transaction not found");
   }
   const row = result.rows[0];
-  let categoryName: string | null = null;
-  if (row.category_id) {
-    const catResult = await pool.query(`SELECT name FROM categories WHERE id = $1`, [row.category_id]);
-    if (catResult.rows.length > 0) categoryName = String(catResult.rows[0].name);
-  }
-  return mapTransactionRow({ ...row, category_name: categoryName });
+  const [catResult, subCatResult] = await Promise.all([
+    row.category_id ? pool.query(`SELECT name FROM categories WHERE id = $1`, [row.category_id]) : Promise.resolve(null),
+    row.sub_category_id ? pool.query(`SELECT name FROM subcategories WHERE id = $1`, [row.sub_category_id]) : Promise.resolve(null),
+  ]);
+  return mapTransactionRow({
+    ...row,
+    category_name: catResult?.rows[0]?.name ?? null,
+    sub_category_name: subCatResult?.rows[0]?.name ?? null,
+  });
 }
 
 /**
@@ -546,14 +703,18 @@ export async function updateTransactionOverride(
  * (or transaction name when no merchant) as the given transaction ID.
  * Returns the number of affected rows.
  */
+const FUZZY_SIMILARITY_THRESHOLD = 0.45;
+
 export async function bulkUpdateTransactionsByMerchant(
   userId: string,
   transactionId: string,
   categoryId: string | null | undefined,
   flow: string | null | undefined,
+  isInternal: boolean | null | undefined,
+  subCategoryId: string | null | undefined,
 ): Promise<number> {
   const txResult = await pool.query(
-    `SELECT merchant_name, name FROM transactions WHERE id = $1 AND user_id = $2 AND source = 'plaid'`,
+    `SELECT merchant_name, name FROM transactions WHERE id = $1 AND user_id = $2 AND (source = 'plaid' OR (source = 'manual' AND frequency IS NULL))`,
     [transactionId, userId],
   );
   if ((txResult.rowCount ?? 0) === 0) {
@@ -563,30 +724,28 @@ export async function bulkUpdateTransactionsByMerchant(
   const row = txResult.rows[0];
   const merchantName = row.merchant_name ? String(row.merchant_name) : null;
   const txName = String(row.name);
+  // Use merchant_name for fuzzy matching when available, fall back to transaction name
+  const matchTarget = merchantName ?? txName;
 
-  let result;
-  if (merchantName) {
-    result = await pool.query(
-      `UPDATE transactions
-       SET category_id = $1, flow = COALESCE($2::text, flow), updated_at = NOW()
-       WHERE user_id = $3 AND source = 'plaid' AND LOWER(merchant_name) = LOWER($4)`,
-      [categoryId ?? null, flow ?? null, userId, merchantName],
-    );
-  } else {
-    result = await pool.query(
-      `UPDATE transactions
-       SET category_id = $1, flow = COALESCE($2::text, flow), updated_at = NOW()
-       WHERE user_id = $3 AND source = 'plaid' AND merchant_name IS NULL AND LOWER(name) = LOWER($4)`,
-      [categoryId ?? null, flow ?? null, userId, txName],
-    );
-  }
+  const result = await pool.query(
+    `UPDATE transactions
+     SET category_id = $1,
+         flow = COALESCE($2::text, flow),
+         is_internal = COALESCE($3::boolean, is_internal),
+         sub_category_id = $4,
+         updated_at = NOW()
+     WHERE user_id = $5
+       AND (source = 'plaid' OR (source = 'manual' AND frequency IS NULL))
+       AND similarity(LOWER(COALESCE(merchant_name, name)), LOWER($6)) >= $7`,
+    [categoryId ?? null, flow ?? null, isInternal ?? null, subCategoryId ?? null, userId, matchTarget, FUZZY_SIMILARITY_THRESHOLD],
+  );
 
   return result.rowCount ?? 0;
 }
 
 export async function deleteTransaction(userId: string, transactionId: string): Promise<void> {
   const result = await pool.query(
-    `DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND source = 'plaid'`,
+    `DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND (source = 'plaid' OR (source = 'manual' AND frequency IS NULL))`,
     [transactionId, userId],
   );
   if ((result.rowCount ?? 0) === 0) {

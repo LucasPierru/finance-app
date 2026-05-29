@@ -25,6 +25,7 @@ async function apiFetch<T>(path: string, init?: Omit<RequestInit, 'body'> & { bo
     throw new Error(message ?? `Error ${res.status}`);
   }
 
+  if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
   return res.json();
 }
 

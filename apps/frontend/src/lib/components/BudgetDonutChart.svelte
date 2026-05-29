@@ -6,11 +6,10 @@
   import { theme } from "$lib/stores/theme";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import type { FinanceItem } from "$lib/stores/finance";
-  import type { BudgetPlan, BudgetPlanItem } from "@finance-app/shared-types";
+  import type { BudgetPlan } from "@finance-app/shared-types";
+  import { toMonthly, spentForItem } from "$lib/utils/budget";
 
   Chart.register(...registerables);
-
-  type Period = "weekly" | "monthly" | "yearly";
 
   let {
     selectedPlan,
@@ -26,24 +25,13 @@
   let donutCenterX = $state(80);
   let donutCenterY = $state(80);
 
-  function toMonthly(amount: number, period: Period): number {
-    if (period === "weekly") return (amount * 52) / 12;
-    if (period === "yearly") return amount / 12;
-    return amount;
-  }
-
-  function spentForItem(item: BudgetPlanItem): number {
-    if (!item.categoryId) return 0;
-    return costs.filter((c) => c.categoryId === item.categoryId).reduce((sum, c) => sum + c.amount, 0);
-  }
-
   const utilizationData = $derived.by(() => {
     if (!selectedPlan || selectedPlan.items.length === 0) return null;
     const totalBudget = selectedPlan.items.reduce(
-      (sum, item) => sum + toMonthly(item.amount, item.period as Period),
+      (sum, item) => sum + toMonthly(item.amount, item.period),
       0,
     );
-    const totalSpent = selectedPlan.items.reduce((sum, item) => sum + spentForItem(item), 0);
+    const totalSpent = selectedPlan.items.reduce((sum, item) => sum + spentForItem(item, costs), 0);
     const pct = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
     const remaining = Math.max(totalBudget - totalSpent, 0);
     const isOver = totalSpent > totalBudget;

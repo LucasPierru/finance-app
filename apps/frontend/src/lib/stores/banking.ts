@@ -1,4 +1,5 @@
 import { derived, writable } from "svelte/store";
+import { invalidateAll } from "$app/navigation";
 import { httpGetPlaidState, httpPostPlaidLinkToken, httpPostPlaidExchangePublicToken, httpPostPlaidSync, httpDeletePlaidConnection } from "$lib/requests/plaid";
 import type { BankConnectionState } from "@finance-app/shared-types";
 
@@ -268,6 +269,7 @@ export async function syncBankData() {
   try {
     const payload = await httpPostPlaidSync();
     bankState.set(payload);
+    await invalidateAll();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank sync failed";
     bankError.set(message);

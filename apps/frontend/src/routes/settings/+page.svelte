@@ -129,6 +129,7 @@
               : null;
 
           await exchangePublicToken(publicToken, institutionName);
+          await syncBankData();
         },
         onExit: (err) => {
           if (err && typeof err === "object") {
@@ -295,7 +296,12 @@
 
       <div class="mb-4">
         <Button onclick={connectWithPlaid} disabled={$bankLoading}>
-          {$bankState.connections.length > 0 ? "Add an account" : "Connect Bank"}
+          {#if $bankLoading}
+            <LoaderCircle class="mr-2 h-4 w-4 animate-spin" />
+            Connecting...
+          {:else}
+            {$bankState.connections.length > 0 ? "Add an account" : "Connect Bank"}
+          {/if}
         </Button>
       </div>
 

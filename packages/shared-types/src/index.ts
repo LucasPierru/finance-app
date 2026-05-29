@@ -10,11 +10,20 @@ export type FinanceEntryType = "income" | "expense";
 
 export type FinanceFrequency = "weekly" | "biweekly" | "monthly" | "yearly";
 
+export interface SubCategory {
+  id: string;
+  categoryId: string;
+  type: FinanceEntryType;
+  name: string;
+  keywords: string[];
+}
+
 export interface FinanceCategory {
   id: string;
   type: FinanceEntryType;
   name: string;
   keywords: string[];
+  subCategories: SubCategory[];
 }
 
 export interface FinanceItemInput {
@@ -82,16 +91,36 @@ export interface BankTransaction {
   pending: boolean;
   /** Effective flow direction — always set; user can override via PATCH */
   flow: 'income' | 'expense';
+  /** Plaid personal_finance_category primary (e.g. FOOD_AND_DRINK, TRANSFER_IN) */
+  personalFinanceCategory: string | null;
+  /** Plaid personal_finance_category detailed (e.g. RESTAURANTS, GROCERIES) */
+  personalFinanceCategoryDetailed: string | null;
   /** User-selected category id (null = auto-detected) */
   categoryId: string | null;
   /** Resolved name for categoryId */
   categoryName: string | null;
+  /** Optional sub-category under the main category */
+  subCategoryId: string | null;
+  subCategoryName: string | null;
+  /** When true, excluded from home-page summary totals */
+  isInternal: boolean;
+}
+
+export interface CreateManualTransactionBody {
+  name?: string;
+  date?: string;
+  amount?: number;
+  flow?: "income" | "expense";
+  categoryId?: string | null;
+  subCategoryId?: string | null;
 }
 
 export interface UpdateTransactionBody {
   categoryId?: string | null;
+  subCategoryId?: string | null;
   flow?: 'income' | 'expense';
-  /** When true, apply the same category/flow to all transactions with the same merchant name (or transaction name if no merchant). */
+  isInternal?: boolean;
+  /** When true, apply the same category/flow/isInternal/subCategoryId to similar transactions using fuzzy name matching. */
   applyToSimilar?: boolean;
 }
 
@@ -131,6 +160,10 @@ export interface TransactionFilters {
   search?: string;
   minAmount?: number;
   maxAmount?: number;
+  categoryId?: string;
+  subCategoryId?: string;
+  sortBy?: "date" | "name" | "amount";
+  sortDir?: "asc" | "desc";
 }
 
 export interface TransactionSummary {

@@ -21,12 +21,23 @@ const defaultInvestmentSettings: InvestmentSettings = {
   expenseGrowth: 2,
 };
 
-function mapFinanceCategory(row: Record<string, unknown>): FinanceCategory {
+function mapSubCategory(row: Record<string, unknown>): import('@finance-app/shared-types').SubCategory {
+  return {
+    id: String(row.id),
+    categoryId: String(row.category_id),
+    type: row.type as FinanceEntryType,
+    name: String(row.name),
+    keywords: Array.isArray(row.keywords) ? (row.keywords as string[]) : [],
+  };
+}
+
+function mapFinanceCategory(row: Record<string, unknown>, subCategories: import('@finance-app/shared-types').SubCategory[] = []): FinanceCategory {
   return {
     id: String(row.id),
     type: row.type as FinanceEntryType,
     name: String(row.name),
     keywords: Array.isArray(row.keywords) ? (row.keywords as string[]) : [],
+    subCategories,
   };
 }
 
@@ -162,7 +173,7 @@ function mapSettings(row: Record<string, unknown> | undefined): InvestmentSettin
 }
 
 export async function getFinanceState(userId: string): Promise<FinanceState> {
-  const [entriesResult, settingsResult, categoriesResult] = await Promise.all([
+  const [entriesResult, settingsResult, categories] = await Promise.all([
     pool.query(
       `SELECT e.id, e.flow, e.name, e.category_id, c.name AS category_name, e.amount, e.raw_amount, e.frequency
        FROM transactions e
@@ -177,13 +188,7 @@ export async function getFinanceState(userId: string): Promise<FinanceState> {
        WHERE user_id = $1`,
       [userId],
     ),
-    pool.query(
-      `SELECT id, type, name, keywords
-       FROM categories
-       WHERE TRUE
-       ORDER BY type ASC, name ASC`,
-      [],
-    ),
+    getFinanceCategories(),
   ]);
 
   const revenues = entriesResult.rows
@@ -196,7 +201,7 @@ export async function getFinanceState(userId: string): Promise<FinanceState> {
   return {
     revenues,
     costs,
-    categories: categoriesResult.rows.map(mapFinanceCategory),
+    categories,
     investmentSettings: mapSettings(settingsResult.rows[0]),
   };
 }
@@ -216,15 +221,20 @@ export async function getFinanceEntries(userId: string, type?: FinanceEntryType)
 }
 
 export async function getFinanceCategories(): Promise<FinanceCategory[]> {
-  const result = await pool.query(
-    `SELECT id, type, name, keywords
-     FROM categories
-     WHERE TRUE
-     ORDER BY type ASC, name ASC`,
-    [],
-  );
+  const [catResult, subResult] = await Promise.all([
+    pool.query(`SELECT id, type, name, keywords FROM categories ORDER BY type ASC, name ASC`),
+    pool.query(`SELECT id, category_id, type, name, keywords FROM subcategories ORDER BY name ASC`),
+  ]);
 
-  return result.rows.map(mapFinanceCategory);
+  const subsByCategory = new Map<string, import('@finance-app/shared-types').SubCategory[]>();
+  for (const row of subResult.rows) {
+    const sub = mapSubCategory(row);
+    const list = subsByCategory.get(sub.categoryId) ?? [];
+    list.push(sub);
+    subsByCategory.set(sub.categoryId, list);
+  }
+
+  return catResult.rows.map((row) => mapFinanceCategory(row, subsByCategory.get(String(row.id)) ?? []));
 }
 
 export async function createFinanceCategory(
