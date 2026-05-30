@@ -349,6 +349,15 @@
       transform: translateY(0);
     }
   }
+
+  .animate-progress-bar {
+    animation: progress-indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  @keyframes progress-indeterminate {
+    0%   { transform: translateX(-100%); width: 40%; }
+    50%  { width: 60%; }
+    100% { transform: translateX(350%); width: 40%; }
+  }
   .font-display {
     font-family: "Bricolage Grotesque", sans-serif;
   }

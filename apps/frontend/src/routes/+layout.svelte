@@ -11,9 +11,10 @@
   import { initializeAuth } from "$lib/stores/auth";
   import { initializeTheme } from "$lib/stores/theme";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
-  import { bankState as bankingStore, syncBankData } from "$lib/stores/banking";
+  import { bankState as bankingStore, bankLoading, syncBankData } from "$lib/stores/banking";
   import { createTransactionRequest } from "$lib/stores/ui";
   import { Plus } from "lucide-svelte";
+  import PullToRefresh from "$lib/components/PullToRefresh.svelte";
 
   const SYNC_THROTTLE_MS = 60 * 60 * 1000;
 
@@ -101,6 +102,13 @@
   });
 </script>
 
+<!-- Indeterminate progress bar while any bank sync is in progress -->
+{#if $bankLoading}
+  <div class="fixed top-0 left-0 right-0 z-[60] h-0.5 overflow-hidden bg-primary/15" aria-hidden="true">
+    <div class="h-full bg-primary animate-progress-bar"></div>
+  </div>
+{/if}
+
 <div class="h-screen overflow-hidden bg-wf-bg text-wf-text font-sans">
   {#if isAuthRoute}
     <main class="h-full w-full overflow-y-auto">{@render children?.()}</main>
@@ -124,7 +132,9 @@
         <main
           class="mx-auto w-full max-w-7xl px-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:px-6 md:py-8 md:pb-8 lg:px-8"
         >
-          {@render children?.()}
+          <PullToRefresh onRefresh={syncBankData} disabled={!$bankingStore.connected}>
+            {@render children?.()}
+          </PullToRefresh>
         </main>
       </div>
     </div>
