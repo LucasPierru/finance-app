@@ -11,6 +11,7 @@
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
   import { toMonthly, periodLabel, itemProgress } from "$lib/utils/budget";
+  import { formatCurrency } from "$lib/utils/format";
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
@@ -27,8 +28,8 @@
   const currentMonthCosts = $derived.by<import("$lib/stores/finance").FinanceItem[]>(() => {
     const breakdown = currentMonthSummary?.categoryBreakdown ?? [];
     if (breakdown.length === 0) return financeView.costs;
-    return breakdown.map((b, i) => {
-      const cat = allCategories.find((c) => c.type === "expense" && c.name === b.category);
+    return breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
+      const cat = allCategories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
       return {
         id: `month-${i}`,
         name: b.category,
@@ -91,13 +92,6 @@
     }
   }
 
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
-  }
 
 </script>
 
@@ -107,20 +101,20 @@
     <Card>
       <CardHeader class="pb-2">
         <CardDescription>Income this month</CardDescription>
-        <CardTitle class="text-2xl text-emerald-400">{fmt(monthlyIncome)}</CardTitle>
+        <CardTitle class="text-2xl text-emerald-400">{formatCurrency(monthlyIncome)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
         <CardDescription>Spent this month</CardDescription>
-        <CardTitle class="text-2xl text-rose-400">{fmt(monthlyExpenses)}</CardTitle>
+        <CardTitle class="text-2xl text-rose-400">{formatCurrency(monthlyExpenses)}</CardTitle>
       </CardHeader>
     </Card>
     <Card>
       <CardHeader class="pb-2">
         <CardDescription>Net this month</CardDescription>
         <CardTitle class="text-2xl {monthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-          {fmt(monthlySurplus)}
+          {formatCurrency(monthlySurplus)}
         </CardTitle>
       </CardHeader>
     </Card>
@@ -264,9 +258,9 @@
                           {item.categoryName ?? "General"}
                         </span>
                         <span class="shrink-0 text-slate-400">
-                          {fmt(spent)}
+                          {formatCurrency(spent)}
                           <span class="text-slate-600">/</span>
-                          {fmt(item.amount)}
+                          {formatCurrency(item.amount)}
                           <span class="ml-1 text-xs text-slate-500">{periodLabel(item.period)}</span>
                         </span>
                       </div>

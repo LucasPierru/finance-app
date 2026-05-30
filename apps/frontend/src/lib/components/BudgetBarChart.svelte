@@ -8,6 +8,8 @@
   import type { FinanceItem } from "$lib/stores/finance";
   import type { BudgetPlan } from "@finance-app/shared-types";
   import { toMonthly, spentForItem, spentColor } from "$lib/utils/budget";
+  import { cssHsl } from "$lib/utils/chart";
+  import { formatCurrency } from "$lib/utils/format";
 
   Chart.register(...registerables);
 
@@ -31,13 +33,6 @@
       spent: selectedPlan.items.map((item) => spentForItem(item, costs)),
     };
   });
-
-  function cssHsl(variable: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
 
   function render() {
     if (typeof window === "undefined" || !barCanvas || !chartData) return;
@@ -86,8 +81,7 @@
           },
           tooltip: {
             callbacks: {
-              label: (ctx) =>
-                ` ${ctx.dataset.label}: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(ctx.parsed.x as number)}`,
+              label: (ctx) => ` ${ctx.dataset.label}: ${formatCurrency(ctx.parsed.x as number)}`,
             },
           },
         },

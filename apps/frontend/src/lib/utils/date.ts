@@ -20,8 +20,8 @@ export function getMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Returns the "YYYY-MM" key for the month prior to the given key. Returns "" on invalid input. */
-export function getPriorMonthKey(monthKey: string): string {
+/** Returns the "YYYY-MM" key for the month previous to the given key. Returns "" on invalid input. */
+export function getPreviousMonthKey(monthKey: string): string {
   const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
   if (!match) return "";
   const d = new Date(Number(match[1]), Number(match[2]) - 2, 1);

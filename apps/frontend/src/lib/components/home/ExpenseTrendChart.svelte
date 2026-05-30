@@ -4,20 +4,22 @@
   import { onMount } from "svelte";
   import { Chart, registerables, type Chart as ChartInstance, type ChartDataset } from "chart.js";
   import { theme } from "$lib/stores/theme";
+  import { cssHsl } from "$lib/utils/chart";
+  import { formatCurrency } from "$lib/utils/format";
 
   Chart.register(...registerables);
 
   let {
     labels,
     values,
-    priorValues = [] as number[],
+    previousValues = [] as number[],
     totalLabel,
     chartHeight = 260,
     class: className = "",
   }: {
     labels: string[];
     values: number[];
-    priorValues?: number[];
+    previousValues?: number[];
     totalLabel: string;
     chartHeight?: number;
     class?: string;
@@ -27,13 +29,6 @@
   let containerEl: HTMLDivElement | undefined;
   let chart: ChartInstance | undefined;
   let mounted = $state(false);
-
-  function cssHsl(variableName: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
 
   function buildCumulativeValues(raw: number[]): number[] {
     let running = 0;
@@ -66,7 +61,7 @@
 
     const safeLabels = labels.length > 0 ? labels : ["No data"];
     const safeValues = values.length > 0 ? buildCumulativeValues(values) : [0];
-    const cumPrior = priorValues.length > 0 ? buildCumulativeValues(priorValues) : [];
+    const cumPrevious = previousValues.length > 0 ? buildCumulativeValues(previousValues) : [];
 
     const datasets: ChartDataset<"line">[] = [
       {
@@ -80,9 +75,9 @@
       },
     ];
 
-    if (cumPrior.length > 0) {
+    if (cumPrevious.length > 0) {
       datasets.push({
-        data: cumPrior,
+        data: cumPrevious,
         fill: false,
         cubicInterpolationMode: "monotone",
         borderColor: "rgba(148,163,184,0.35)",
@@ -107,13 +102,8 @@
             callbacks: {
               title: (items) => `Day ${items[0].label}`,
               label: (ctx) => {
-                const name = ctx.datasetIndex === 0 ? "This month" : "Prior month";
-                const val = new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format((ctx.raw as number) ?? 0);
-                return `${name}: ${val}`;
+                const name = ctx.datasetIndex === 0 ? "This month" : "Previous month";
+                return `${name}: ${formatCurrency((ctx.raw as number) ?? 0)}`;
               },
             },
           },
@@ -127,12 +117,7 @@
             grid: { color: cssHsl("--border", 0.5) },
             ticks: {
               color: cssHsl("--muted-foreground"),
-              callback: (value) =>
-                new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format(value as number),
+              callback: (value) => formatCurrency(value as number),
             },
           },
         },
@@ -144,7 +129,7 @@
     if (!mounted) return;
     labels;
     values;
-    priorValues;
+    previousValues;
     $theme;
     renderChart();
   });

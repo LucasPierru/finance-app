@@ -8,6 +8,8 @@
   import type { FinanceItem } from "$lib/stores/finance";
   import type { BudgetPlan } from "@finance-app/shared-types";
   import { toMonthly, spentForItem, spentColor } from "$lib/utils/budget";
+  import { cssHsl, SPENT_OK, SPENT_WARN, SPENT_OVER } from "$lib/utils/chart";
+  import { formatCurrency } from "$lib/utils/format";
 
   Chart.register(...registerables);
 
@@ -20,8 +22,8 @@
   } = $props();
 
   let selectedPlanId = $state<string | null>(null);
-  let barCanvas: HTMLCanvasElement | undefined;
-  let donutCanvas: HTMLCanvasElement | undefined;
+  let barCanvas: HTMLCanvasElement | undefined = $state();
+  let donutCanvas: HTMLCanvasElement | undefined = $state();
   let barChart: ChartInstance | undefined;
   let donutChart: ChartInstance | undefined;
   let mounted = $state(false);
@@ -58,13 +60,6 @@
     const isOver = totalSpent > totalBudget;
     return { totalBudget, totalSpent, pct, remaining, isOver };
   });
-
-  function cssHsl(variableName: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
 
   function renderBarChart() {
     if (typeof window === "undefined" || !barCanvas || !chartData) return;
@@ -117,15 +112,7 @@
           },
           tooltip: {
             callbacks: {
-              label: (ctx) => {
-                const value = ctx.parsed.x as number;
-                const formatted = new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format(value);
-                return ` ${ctx.dataset.label}: ${formatted}`;
-              },
+              label: (ctx) => ` ${ctx.dataset.label}: ${formatCurrency(ctx.parsed.x as number)}`,
             },
           },
         },
@@ -192,14 +179,7 @@
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx) => {
-                const value = ctx.parsed as number;
-                return ` ${new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format(value)}`;
-              },
+              label: (ctx) => ` ${formatCurrency(ctx.parsed as number)}`,
             },
           },
         },
@@ -222,12 +202,7 @@
     renderDonutChart();
   });
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
+
 </script>
 
 {#if budgetPlans.length > 0}
@@ -300,21 +275,21 @@
               <div class="w-full space-y-1.5 text-sm">
                 <div class="flex items-center justify-between">
                   <span class="text-slate-400">Spent</span>
-                  <span class="font-medium {isOver ? 'text-rose-400' : 'text-slate-200'}">{fmt(totalSpent)}</span>
+                  <span class="font-medium {isOver ? 'text-rose-400' : 'text-slate-200'}">{formatCurrency(totalSpent)}</span>
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-slate-400">Budget</span>
-                  <span class="font-medium text-slate-200">{fmt(totalBudget)}</span>
+                  <span class="font-medium text-slate-200">{formatCurrency(totalBudget)}</span>
                 </div>
                 {#if isOver}
                   <div class="flex items-center justify-between">
                     <span class="text-rose-500">Over by</span>
-                    <span class="font-medium text-rose-400">{fmt(totalSpent - totalBudget)}</span>
+                    <span class="font-medium text-rose-400">{formatCurrency(totalSpent - totalBudget)}</span>
                   </div>
                 {:else}
                   <div class="flex items-center justify-between">
                     <span class="text-slate-400">Remaining</span>
-                    <span class="font-medium text-emerald-400">{fmt(utilizationData.remaining)}</span>
+                    <span class="font-medium text-emerald-400">{formatCurrency(utilizationData.remaining)}</span>
                   </div>
                 {/if}
               </div>

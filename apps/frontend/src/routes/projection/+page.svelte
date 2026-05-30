@@ -12,26 +12,17 @@
   import { theme } from "$lib/stores/theme";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
+  import { cssHsl } from "$lib/utils/chart";
+  import { formatCurrency } from "$lib/utils/format";
 
   let chartCanvas = $state<HTMLCanvasElement | undefined>(undefined);
   let chartInstance = $state<import("chart.js").Chart | undefined>(undefined);
-
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-  }
 
   function fmtK(n: number): string {
     const abs = Math.abs(n);
     if (abs >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
     if (abs >= 1_000) return (n / 1_000).toFixed(1) + "k";
     return n.toFixed(0);
-  }
-
-  function cssHsl(variableName: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
   }
 
   async function renderChart(data: { year: number; balance: number }[]) {
@@ -224,7 +215,7 @@
       <span
         class="font-display text-xl font-700 {$effectiveMonthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}"
       >
-        {fmt($effectiveMonthlySurplus)}
+        {formatCurrency($effectiveMonthlySurplus)}
       </span>
     </div>
   </div>
@@ -240,7 +231,7 @@
           d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
         />
       </svg>
-      Your expenses exceed revenue by <strong>{fmt(Math.abs($effectiveMonthlySurplus))}/mo</strong>. Reduce costs to
+      Your expenses exceed revenue by <strong>{formatCurrency(Math.abs($effectiveMonthlySurplus))}/mo</strong>. Reduce costs to
       start investing.
     </div>
   {/if}
@@ -272,10 +263,10 @@
               >Yr {row.year}</span
             >
           </span>
-          <span class="font-display font-700 text-[#3b82f6]">{fmt(row.balance)}</span>
-          <span class="text-slate-500">{fmt(Math.max(0, totalInvested))}</span>
+          <span class="font-display font-700 text-[#3b82f6]">{formatCurrency(row.balance)}</span>
+          <span class="text-slate-500">{formatCurrency(Math.max(0, totalInvested))}</span>
           <span class="{gain > 0 ? 'text-emerald-400' : 'text-rose-400'} font-medium">
-            {gain > 0 ? "+" : ""}{fmt(gain)}
+            {gain > 0 ? "+" : ""}{formatCurrency(gain)}
           </span>
         </div>
       {/if}

@@ -80,7 +80,7 @@
     };
   });
 
-  const priorMonthKey = $derived.by(() => {
+  const previousMonthKey = $derived.by(() => {
     const match = /^(\d{4})-(\d{2})$/.exec(selectedMonthKey);
     if (!match) return "";
     const d = new Date(Number(match[1]), Number(match[2]) - 2, 1);
@@ -92,11 +92,11 @@
     return { labels: Array.from({ length: values.length }, (_, i) => String(i + 1)), values };
   });
 
-  const priorMonthDailyExpenseValues = $derived(
+  const previousMonthDailyExpenseValues = $derived(
     buildDailyExpenseTrend(
-      priorMonthKey,
-      page.data.priorMonthSummary?.dailyExpenseBreakdown,
-      groupedByMonth.find((g) => g.key === priorMonthKey)?.items ?? [],
+      previousMonthKey,
+      page.data.previousMonthSummary?.dailyExpenseBreakdown,
+      groupedByMonth.find((g) => g.key === previousMonthKey)?.items ?? [],
     ),
   );
 
@@ -104,7 +104,7 @@
     const breakdown = page.data.currentMonthSummary?.categoryBreakdown ?? [];
     const categories = page.data.allCategories ?? [];
     if (breakdown.length === 0) return financeView.costs;
-    return breakdown.map((b, i) => {
+    return breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
       const cat = categories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
       return {
         id: `month-${i}`,
@@ -172,7 +172,7 @@
     <ExpenseTrendChart
       labels={selectedMonthDailyTrend.labels}
       values={selectedMonthDailyTrend.values}
-      priorValues={priorMonthDailyExpenseValues}
+      previousValues={previousMonthDailyExpenseValues}
       totalLabel={`${selectedMonthLabel} — ${formatCurrency(selectedMonthSummary.expenseBreakdown.total)} spent`}
     />
   </div>

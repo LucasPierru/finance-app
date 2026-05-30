@@ -1,16 +1,23 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
   import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
-  import { SlidersHorizontal, Pencil, Trash2, LoaderCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-svelte";
+  import { SlidersHorizontal, Pencil, Trash2, LoaderCircle, ArrowUpDown, ArrowUp, ArrowDown, Calendar as CalendarIcon } from "lucide-svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as Drawer from "$lib/components/ui/drawer";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import * as Popover from "$lib/components/ui/popover";
+  import { Calendar as CalendarPicker } from "$lib/components/ui/calendar";
+  import { parseDate, type DateValue } from "@internationalized/date";
   import { httpPostManualTransaction, httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
+  import { createTransactionRequest, get } from "$lib/stores/ui";
 
   type Mode = "transactions" | "recurring";
 
@@ -98,6 +105,15 @@
     onTransactionDeleted?: (transactionId: string) => void;
   } = $props();
 
+  let isMobile = $state(false);
+  onMount(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    isMobile = mq.matches;
+    const fn = (e: MediaQueryListEvent) => (isMobile = e.matches);
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  });
+
   let syncing = $state(false);
 
   async function handleRefresh() {
@@ -180,8 +196,21 @@
 
   // ── Create manual transaction modal ──────────────────────────────────────
   let createModalOpen = $state(false);
+
+  // Open modal when the layout's floating button fires a request
+  let _seenRequest = get(createTransactionRequest);
+  $effect(() => {
+    const req = $createTransactionRequest;
+    if (req !== _seenRequest) {
+      _seenRequest = req;
+      openCreateModal();
+    }
+  });
+
   let createName = $state("");
   let createDate = $state("");
+  let createDateValue = $state<DateValue | undefined>(undefined);
+  let datePickerOpen = $state(false);
   let createAmount = $state("");
   let createFlow = $state<"income" | "expense">("expense");
   let createCategoryId = $state("");
@@ -191,9 +220,28 @@
 
   const createFlowCategories = $derived(categories.filter((c) => c.type === createFlow));
 
+  $effect(() => {
+    if (createDateValue) {
+      const newDate = `${createDateValue.year}-${String(createDateValue.month).padStart(2, "0")}-${String(createDateValue.day).padStart(2, "0")}`;
+      if (newDate !== createDate) {
+        createDate = newDate;
+        datePickerOpen = false;
+      }
+    }
+  });
+
+  function formatDateDisplay(dateStr: string): string {
+    if (!dateStr) return "Pick a date";
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(year, month - 1, day));
+  }
+
   function openCreateModal() {
     createName = "";
-    createDate = new Date().toISOString().slice(0, 10);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    createDate = todayStr;
+    createDateValue = parseDate(todayStr);
+    datePickerOpen = false;
     createAmount = "";
     createFlow = "expense";
     createCategoryId = "";
@@ -356,6 +404,13 @@
         </CardDescription>
       </div>
 
+      {#if mode === "transactions" && (hasSyncedData || serverTotal > 0)}
+        <Button variant={hasActiveFilters ? "default" : "outline"} size="sm" onclick={openFilterModal} class="md:hidden">
+          <SlidersHorizontal class="h-3.5 w-3.5" />
+          Filters{hasActiveFilters ? ` (${activeFilterCount})` : ""}
+        </Button>
+      {/if}
+
       <div class="hidden items-center gap-2 md:flex">
         <Button
           variant={mode === "transactions" ? "default" : "outline"}
@@ -386,6 +441,7 @@
         {/if}
       </div>
     </div>
+
   </CardHeader>
 
   <CardContent class="p-0">
@@ -399,57 +455,53 @@
       {:else if serverTotal === 0 && !hasSyncedData}
         <p class="px-5 py-10 text-center text-sm text-slate-500">No synced transactions yet. Click refresh.</p>
       {:else}
-        <div class="space-y-4 px-5 pb-4 pt-4">
+        <div class="space-y-4 px-3 pb-4 pt-3 md:px-5 md:pt-4">
           {#if transactions.length === 0}
             <p class="rounded-lg border border-[#252a3a] px-5 py-8 text-center text-sm text-slate-500">
               No transactions found.
             </p>
           {:else}
             <!-- Mobile cards -->
-            <div class="space-y-3 md:hidden">
+            <div class="space-y-2 md:hidden">
               {#each transactions as tx (tx.transactionId)}
-                <article class="rounded-lg border border-[#252a3a] bg-[#13161e] p-3">
+                <article class="rounded-xl border border-[#252a3a] bg-[#13161e] px-4 py-3">
+                  <!-- Row 1: name + amount -->
                   <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <p class="truncate text-sm font-semibold text-slate-200">{tx.name}</p>
-                      <p class="text-xs text-slate-500">{tx.merchantName ?? "-"}</p>
-                    </div>
-                    <div class="flex shrink-0 items-center gap-2">
-                      {#if tx.isInternal}
-                        <span class="rounded-full bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-400">Internal</span>
-                      {/if}
-                      {#if tx.isTransfer}
-                        <span class="rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400">Transfer</span>
-                      {/if}
-                      <p class="text-sm font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
-                        {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
-                      </p>
-                    </div>
-                  </div>
-                  <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                    <p class="text-slate-500">Date</p>
-                    <p class="text-right text-slate-300">{tx.date}</p>
-                    <p class="text-slate-500">Category</p>
-                    <p class="text-right text-slate-300">
-                      {tx.resolvedCategory}{tx.subCategoryName ? ` · ${tx.subCategoryName}` : ""}
+                    <p class="min-w-0 truncate text-base font-medium text-slate-100">{tx.name}</p>
+                    <p class="shrink-0 text-base font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
+                      {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                     </p>
-                    <p class="text-slate-500">Pending</p>
-                    <p class="text-right text-slate-300">{tx.pending ? "Yes" : "No"}</p>
                   </div>
-                  <div class="mt-3 flex gap-2 border-t border-[#252a3a] pt-3">
-                    <button
-                      onclick={() => openEditModal(tx)}
-                      class="flex flex-1 items-center justify-center gap-2 rounded border border-[#252a3a] py-2 text-sm text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
-                    >
-                      <Pencil class="h-4 w-4" />
-                      Edit
-                    </button>
-                    <button
-                      onclick={() => openDeleteModal(tx)}
-                      class="flex items-center justify-center gap-2 rounded border border-[#252a3a] px-4 py-2 text-sm text-slate-400 transition-colors hover:border-rose-800 hover:text-rose-400"
-                    >
-                      <Trash2 class="h-4 w-4" />
-                    </button>
+                  <!-- Row 2: category + date + badges + actions -->
+                  <div class="mt-2 flex items-center justify-between gap-2">
+                    <div class="flex min-w-0 flex-col gap-0.5">
+                      <p class="truncate text-sm text-slate-400">
+                        {tx.resolvedCategory}{tx.subCategoryName ? ` · ${tx.subCategoryName}` : ""}
+                      </p>
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-sm text-slate-500">{tx.date}</span>
+                        {#if tx.isInternal}
+                          <span class="rounded-full bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-400">Internal</span>
+                        {/if}
+                        {#if tx.isTransfer}
+                          <span class="rounded-full bg-amber-900/40 px-1.5 py-0.5 text-xs text-amber-400">Transfer</span>
+                        {/if}
+                      </div>
+                    </div>
+                    <div class="flex shrink-0 gap-1">
+                      <button
+                        onclick={() => openEditModal(tx)}
+                        class="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-950/50 hover:text-blue-300"
+                      >
+                        <Pencil class="h-4 w-4" />
+                      </button>
+                      <button
+                        onclick={() => openDeleteModal(tx)}
+                        class="rounded-lg p-2 text-rose-500 transition-colors hover:bg-rose-950/50 hover:text-rose-400"
+                      >
+                        <Trash2 class="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </article>
               {/each}
@@ -585,28 +637,24 @@
     {:else if recurringEntries.length === 0}
       <p class="px-5 py-8 text-center text-sm text-slate-500">No recurring entries detected yet.</p>
     {:else}
-      <div class="space-y-3 p-3 md:hidden">
+      <div class="space-y-2 px-3 pb-3 pt-3 md:hidden">
         {#each pagedRecurringEntries as entry (entry.merchantKey)}
-          <article class="rounded-lg border border-[#252a3a] bg-[#13161e] p-3">
+          <article class="rounded-xl border border-[#252a3a] bg-[#13161e] px-4 py-3">
             <div class="flex items-start justify-between gap-3">
-              <p class="min-w-0 truncate text-sm font-semibold text-slate-200">{entry.displayName}</p>
-              <p
-                class="shrink-0 text-sm font-semibold {entry.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}"
-              >
+              <p class="min-w-0 truncate text-base font-medium text-slate-100">{entry.displayName}</p>
+              <p class="shrink-0 text-base font-semibold {entry.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
                 {fmtCurrency(entry.averageAmount, "USD")}
               </p>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <p class="text-slate-500">Type</p>
-              <p class="text-right capitalize text-slate-300">{entry.flow}</p>
-              <p class="text-slate-500">Category</p>
-              <p class="text-right text-slate-300">{entry.resolvedCategory}</p>
-              <p class="text-slate-500">Cadence</p>
-              <p class="text-right capitalize text-slate-300">{entry.cadence}</p>
-              <p class="text-slate-500">Occurrences</p>
-              <p class="text-right text-slate-300">{entry.occurrences}</p>
-              <p class="text-slate-500">Last Seen</p>
-              <p class="text-right text-slate-300">{entry.lastSeenDate}</p>
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <p class="truncate text-sm text-slate-400">{entry.resolvedCategory}</p>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-sm text-slate-500 capitalize">{entry.cadence}</span>
+                  <span class="text-sm text-slate-600">· {entry.occurrences}×</span>
+                </div>
+              </div>
+              <p class="shrink-0 text-xs text-slate-500">{entry.lastSeenDate}</p>
             </div>
           </article>
         {/each}
@@ -666,246 +714,287 @@
   </CardContent>
 </Card>
 
-<!-- Create Manual Transaction Modal -->
-<Dialog.Root bind:open={createModalOpen}>
-  <Dialog.Content class="sm:max-w-md">
-    <Dialog.Header>
-      <Dialog.Title>Add Transaction</Dialog.Title>
-      <Dialog.Description>Log a manual transaction not captured by your bank.</Dialog.Description>
-    </Dialog.Header>
+<!-- ── Shared form snippets ─────────────────────────────────────────────── -->
 
-    <div class="space-y-4 py-2">
-      <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Date</Label>
-          <Input class="h-9" type="date" bind:value={createDate} />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Type</Label>
-          <Select
-            class="h-9"
-            bind:value={createFlow}
-            onchange={() => { createCategoryId = ""; createSubCategoryId = ""; createSelectedValue = ""; }}
-          >
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
-          </Select>
-        </div>
-      </div>
-
+{#snippet createFormBody()}
+  <div class="space-y-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div class="flex flex-col gap-1.5">
-        <Label class="text-sm text-slate-400">Description</Label>
-        <Input class="h-9" placeholder="e.g. Coffee, Cash withdrawal…" bind:value={createName} />
+        <Label class="text-sm text-slate-400">Date</Label>
+        <Popover.Root bind:open={datePickerOpen}>
+          <Popover.Trigger class="flex h-9 w-full items-center rounded-md border border-[#252a3a] bg-[#1c2030] px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b8dee] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0f14]">
+            <CalendarIcon class="mr-2 h-4 w-4 shrink-0 text-slate-400" />
+            <span class={!createDate ? "text-slate-500" : ""}>{formatDateDisplay(createDate)}</span>
+          </Popover.Trigger>
+          <Popover.Content align="start" class="w-auto p-0">
+            <CalendarPicker type="single" bind:value={createDateValue} />
+          </Popover.Content>
+        </Popover.Root>
       </div>
-
-      <div class="flex flex-col gap-1.5">
-        <Label class="text-sm text-slate-400">Amount</Label>
-        <Input class="h-9" type="number" min="0" step="0.01" placeholder="0.00" bind:value={createAmount} />
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <Label class="text-sm text-slate-400">Category <span class="text-slate-600">(optional)</span></Label>
-        <Select
-          class="h-9"
-          value={createSelectedValue}
-          onchange={(e) => handleCreateCategorySelect((e.target as HTMLSelectElement).value)}
-        >
-          <option value="">No category</option>
-          {#each createFlowCategories as cat (cat.id)}
-            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-            {#each cat.subCategories as sub (sub.id)}
-              <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
-            {/each}
-          {/each}
-        </Select>
-      </div>
-    </div>
-
-    <Dialog.Footer>
-      <Button variant="outline" onclick={() => (createModalOpen = false)}>Cancel</Button>
-      <Button
-        onclick={saveCreate}
-        disabled={createSaving || !createName.trim() || !createDate || !createAmount}
-      >
-        {createSaving ? "Saving…" : "Add Transaction"}
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
-
-<!-- Filter Modal -->
-<Dialog.Root bind:open={filterModalOpen}>
-  <Dialog.Content class="sm:max-w-md">
-    <Dialog.Header>
-      <Dialog.Title>Filter Transactions</Dialog.Title>
-      <Dialog.Description>Narrow down transactions by type, category, or amount.</Dialog.Description>
-    </Dialog.Header>
-
-    <div class="space-y-4 py-2">
-      <div class="flex flex-col gap-1.5">
-        <Label class="text-sm text-slate-400">Search</Label>
-        <Input
-          class="h-9"
-          placeholder="Name or merchant..."
-          bind:value={draftSearch}
-        />
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Type</Label>
-          <Select class="h-9" bind:value={draftFlow}>
-            <option value="">All</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </Select>
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Category</Label>
-          <Select
-            class="h-9"
-            bind:value={draftCategoryId}
-            onchange={() => (draftSubCategoryId = "")}
-          >
-            <option value="">All</option>
-            {#each categories as cat (cat.id)}
-              <option value={cat.id}>{cat.name}</option>
-            {/each}
-          </Select>
-        </div>
-      </div>
-
-      {#if draftSubCategoryOptions.length > 0}
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Sub-category</Label>
-          <Select class="h-9" bind:value={draftSubCategoryId}>
-            <option value="">All</option>
-            {#each draftSubCategoryOptions as sub (sub.id)}
-              <option value={sub.id}>{sub.name}</option>
-            {/each}
-          </Select>
-        </div>
-      {/if}
-
-      <div class="grid grid-cols-2 gap-3">
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Min amount ($)</Label>
-          <Input
-            class="h-9"
-            type="number"
-            min="0"
-            placeholder="0"
-            bind:value={draftMinAmount}
-          />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <Label class="text-sm text-slate-400">Max amount ($)</Label>
-          <Input
-            class="h-9"
-            type="number"
-            min="0"
-            placeholder="No limit"
-            bind:value={draftMaxAmount}
-          />
-        </div>
-      </div>
-    </div>
-
-    <Dialog.Footer class="gap-2 sm:gap-0">
-      {#if hasActiveFilters}
-        <Button variant="ghost" class="mr-auto text-slate-400" onclick={clearAndCloseFilters}>Clear all</Button>
-      {/if}
-      <Button variant="outline" onclick={() => (filterModalOpen = false)}>Cancel</Button>
-      <Button onclick={applyFilters}>Apply</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
-
-<!-- Edit Dialog -->
-<Dialog.Root
-  open={modalMode === "edit" && modalTx !== null}
-  onOpenChange={(v) => {
-    if (!v) closeModal();
-  }}
->
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Edit Transaction</Dialog.Title>
-      <Dialog.Description class="truncate">{modalTx?.name ?? ""}</Dialog.Description>
-    </Dialog.Header>
-    <div class="space-y-4 py-2">
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Type</Label>
-        <Select
-          bind:value={editFlow}
-          onchange={() => {
-            editCategoryId = "";
-            editSubCategoryId = "";
-            editSelectedValue = "";
-          }}
-          class="h-10"
-        >
+        <Select class="h-9" bind:value={createFlow} onchange={() => { createCategoryId = ""; createSubCategoryId = ""; createSelectedValue = ""; }}>
           <option value="expense">Expense</option>
           <option value="income">Income</option>
         </Select>
       </div>
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Description</Label>
+      <Input class="h-9" placeholder="e.g. Coffee, Cash withdrawal…" bind:value={createName} />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Amount</Label>
+      <Input class="h-9" type="number" min="0" step="0.01" placeholder="0.00" bind:value={createAmount} />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Category</Label>
+      <Select class="h-9" value={createSelectedValue} onchange={(e) => handleCreateCategorySelect((e.target as HTMLSelectElement).value)}>
+        <option value="">No category</option>
+        {#each createFlowCategories as cat (cat.id)}
+          <option value={cat.id} style="font-weight: 600">{cat.name}</option>
+          {#each cat.subCategories as sub (sub.id)}
+            <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
+          {/each}
+        {/each}
+      </Select>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet filterFormBody()}
+  <div class="space-y-4">
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Search</Label>
+      <Input class="h-9" placeholder="Name or merchant..." bind:value={draftSearch} />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Type</Label>
+        <Select class="h-9" bind:value={draftFlow}>
+          <option value="">All</option>
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+        </Select>
+      </div>
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Category</Label>
-        <Select
-          value={editSelectedValue}
-          onchange={(e) => handleCategorySelect((e.target as HTMLSelectElement).value)}
-          class="h-10"
-        >
-          <option value="">Auto-detect</option>
-          {#each editFlowCategories as cat (cat.id)}
-            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-            {#each cat.subCategories as sub (sub.id)}
-              <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
-            {/each}
+        <Select class="h-9" bind:value={draftCategoryId} onchange={() => (draftSubCategoryId = "")}>
+          <option value="">All</option>
+          {#each categories as cat (cat.id)}
+            <option value={cat.id}>{cat.name}</option>
           {/each}
         </Select>
       </div>
-      <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
-        <input type="checkbox" bind:checked={editIsInternal} class="rounded" />
-        Mark as internal (exclude from home page summary)
-      </label>
-      <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
-        <input type="checkbox" bind:checked={applyToSimilar} class="rounded" />
-        Apply to all transactions from the same merchant
-      </label>
     </div>
-    <Dialog.Footer>
-      <Button variant="outline" onclick={closeModal}>Cancel</Button>
-      <Button onclick={saveEdit} disabled={editSaving}>
-        {editSaving ? "Saving…" : "Save changes"}
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+    {#if draftSubCategoryOptions.length > 0}
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Sub-category</Label>
+        <Select class="h-9" bind:value={draftSubCategoryId}>
+          <option value="">All</option>
+          {#each draftSubCategoryOptions as sub (sub.id)}
+            <option value={sub.id}>{sub.name}</option>
+          {/each}
+        </Select>
+      </div>
+    {/if}
+    <div class="grid grid-cols-2 gap-3">
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Min amount ($)</Label>
+        <Input class="h-9" type="number" min="0" placeholder="0" bind:value={draftMinAmount} />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <Label class="text-sm text-slate-400">Max amount ($)</Label>
+        <Input class="h-9" type="number" min="0" placeholder="No limit" bind:value={draftMaxAmount} />
+      </div>
+    </div>
+  </div>
+{/snippet}
 
-<!-- Delete Dialog -->
-<Dialog.Root
-  open={modalMode === "delete" && modalTx !== null}
-  onOpenChange={(v) => {
-    if (!v) closeModal();
-  }}
->
-  <Dialog.Content>
-    <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-rose-900/40">
-      <Trash2 class="h-5 w-5 text-rose-400" />
+{#snippet editFormBody()}
+  <div class="space-y-4">
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Type</Label>
+      <Select class="h-10" bind:value={editFlow} onchange={() => { editCategoryId = ""; editSubCategoryId = ""; editSelectedValue = ""; }}>
+        <option value="expense">Expense</option>
+        <option value="income">Income</option>
+      </Select>
     </div>
-    <Dialog.Header>
-      <Dialog.Title>Delete Transaction</Dialog.Title>
-      <Dialog.Description>Are you sure you want to delete this transaction?</Dialog.Description>
-    </Dialog.Header>
-    <p class="my-2 truncate font-medium text-slate-200">{modalTx?.name ?? ""}</p>
-    <p class="text-xs text-slate-500">This action cannot be undone.</p>
-    <Dialog.Footer class="mt-4">
-      <Button variant="outline" onclick={closeModal}>Cancel</Button>
-      <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
-        {deleteDeleting ? "Deleting…" : "Delete"}
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+    <div class="flex flex-col gap-1.5">
+      <Label class="text-sm text-slate-400">Category</Label>
+      <Select class="h-10" value={editSelectedValue} onchange={(e) => handleCategorySelect((e.target as HTMLSelectElement).value)}>
+        <option value="">Auto-detect</option>
+        {#each editFlowCategories as cat (cat.id)}
+          <option value={cat.id} style="font-weight: 600">{cat.name}</option>
+          {#each cat.subCategories as sub (sub.id)}
+            <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
+          {/each}
+        {/each}
+      </Select>
+    </div>
+    <div class="flex items-center gap-3">
+      <Checkbox bind:checked={editIsInternal} class="size-5 md:size-4 shrink-0" />
+      <span class="cursor-pointer text-sm text-slate-400 md:text-sm" onclick={() => (editIsInternal = !editIsInternal)}>
+        Mark as internal (exclude from home page summary)
+      </span>
+    </div>
+    <div class="flex items-center gap-3">
+      <Checkbox bind:checked={applyToSimilar} class="size-5 md:size-4 shrink-0" />
+      <span class="cursor-pointer text-sm text-slate-400" onclick={() => (applyToSimilar = !applyToSimilar)}>
+        Apply to all transactions from the same merchant
+      </span>
+    </div>
+  </div>
+{/snippet}
+
+<!-- ── Create Transaction ───────────────────────────────────────────────── -->
+{#if isMobile}
+  <Drawer.Root bind:open={createModalOpen}>
+    <Drawer.Content>
+      <Drawer.Header class="text-left">
+        <Drawer.Title>Add Transaction</Drawer.Title>
+        <Drawer.Description>Log a manual transaction not captured by your bank.</Drawer.Description>
+      </Drawer.Header>
+      <div class="overflow-y-auto px-4 pb-2">{@render createFormBody()}</div>
+      <Drawer.Footer>
+        <Button onclick={saveCreate} disabled={createSaving || !createName.trim() || !createDate || !createAmount}>
+          {createSaving ? "Saving…" : "Add Transaction"}
+        </Button>
+        <Button variant="outline" onclick={() => (createModalOpen = false)}>Cancel</Button>
+      </Drawer.Footer>
+    </Drawer.Content>
+  </Drawer.Root>
+{:else}
+  <Dialog.Root bind:open={createModalOpen}>
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Add Transaction</Dialog.Title>
+        <Dialog.Description>Log a manual transaction not captured by your bank.</Dialog.Description>
+      </Dialog.Header>
+      <div class="py-2">{@render createFormBody()}</div>
+      <Dialog.Footer>
+        <Button variant="outline" onclick={() => (createModalOpen = false)}>Cancel</Button>
+        <Button onclick={saveCreate} disabled={createSaving || !createName.trim() || !createDate || !createAmount}>
+          {createSaving ? "Saving…" : "Add Transaction"}
+        </Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}
+
+<!-- ── Filter ──────────────────────────────────────────────────────────── -->
+{#if isMobile}
+  <Drawer.Root bind:open={filterModalOpen}>
+    <Drawer.Content>
+      <Drawer.Header class="text-left">
+        <Drawer.Title>Filter Transactions</Drawer.Title>
+        <Drawer.Description>Narrow down by type, category, or amount.</Drawer.Description>
+      </Drawer.Header>
+      <div class="overflow-y-auto px-4 pb-2">{@render filterFormBody()}</div>
+      <Drawer.Footer>
+        <Button onclick={applyFilters}>Apply</Button>
+        {#if hasActiveFilters}
+          <Button variant="ghost" class="text-slate-400" onclick={clearAndCloseFilters}>Clear all</Button>
+        {/if}
+        <Button variant="outline" onclick={() => (filterModalOpen = false)}>Cancel</Button>
+      </Drawer.Footer>
+    </Drawer.Content>
+  </Drawer.Root>
+{:else}
+  <Dialog.Root bind:open={filterModalOpen}>
+    <Dialog.Content class="sm:max-w-md">
+      <Dialog.Header>
+        <Dialog.Title>Filter Transactions</Dialog.Title>
+        <Dialog.Description>Narrow down transactions by type, category, or amount.</Dialog.Description>
+      </Dialog.Header>
+      <div class="py-2">{@render filterFormBody()}</div>
+      <Dialog.Footer class="gap-2 sm:gap-0">
+        {#if hasActiveFilters}
+          <Button variant="ghost" class="mr-auto text-slate-400" onclick={clearAndCloseFilters}>Clear all</Button>
+        {/if}
+        <Button variant="outline" onclick={() => (filterModalOpen = false)}>Cancel</Button>
+        <Button onclick={applyFilters}>Apply</Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}
+
+<!-- ── Edit Transaction ────────────────────────────────────────────────── -->
+{#if isMobile}
+  <Drawer.Root open={modalMode === "edit" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
+    <Drawer.Content>
+      <Drawer.Header class="text-left">
+        <Drawer.Title>Edit Transaction</Drawer.Title>
+        <Drawer.Description class="truncate">{modalTx?.name ?? ""}</Drawer.Description>
+      </Drawer.Header>
+      <div class="overflow-y-auto px-4 pb-2">{@render editFormBody()}</div>
+      <Drawer.Footer>
+        <Button onclick={saveEdit} disabled={editSaving}>{editSaving ? "Saving…" : "Save changes"}</Button>
+        <Button variant="outline" onclick={closeModal}>Cancel</Button>
+      </Drawer.Footer>
+    </Drawer.Content>
+  </Drawer.Root>
+{:else}
+  <Dialog.Root open={modalMode === "edit" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
+    <Dialog.Content>
+      <Dialog.Header>
+        <Dialog.Title>Edit Transaction</Dialog.Title>
+        <Dialog.Description class="truncate">{modalTx?.name ?? ""}</Dialog.Description>
+      </Dialog.Header>
+      <div class="py-2">{@render editFormBody()}</div>
+      <Dialog.Footer>
+        <Button variant="outline" onclick={closeModal}>Cancel</Button>
+        <Button onclick={saveEdit} disabled={editSaving}>{editSaving ? "Saving…" : "Save changes"}</Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}
+
+<!-- ── Delete Transaction ──────────────────────────────────────────────── -->
+{#if isMobile}
+  <Drawer.Root open={modalMode === "delete" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
+    <Drawer.Content>
+      <Drawer.Header class="text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-900/40">
+            <Trash2 class="h-4 w-4 text-rose-400" />
+          </div>
+          <div>
+            <Drawer.Title>Delete Transaction</Drawer.Title>
+            <Drawer.Description>This action cannot be undone.</Drawer.Description>
+          </div>
+        </div>
+      </Drawer.Header>
+      <p class="px-4 truncate text-sm font-medium text-slate-200">{modalTx?.name ?? ""}</p>
+      <Drawer.Footer>
+        <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
+          {deleteDeleting ? "Deleting…" : "Delete"}
+        </Button>
+        <Button variant="outline" onclick={closeModal}>Cancel</Button>
+      </Drawer.Footer>
+    </Drawer.Content>
+  </Drawer.Root>
+{:else}
+  <Dialog.Root open={modalMode === "delete" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
+    <Dialog.Content>
+      <Dialog.Header class="text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-900/40">
+            <Trash2 class="h-4 w-4 text-rose-400" />
+          </div>
+          <div>
+            <Dialog.Title>Delete Transaction</Dialog.Title>
+            <Dialog.Description>This action cannot be undone.</Dialog.Description>
+          </div>
+        </div>
+      </Dialog.Header>
+      <p class="mt-3 truncate text-sm font-medium text-slate-200">{modalTx?.name ?? ""}</p>
+      <Dialog.Footer class="mt-4">
+        <Button variant="outline" onclick={closeModal}>Cancel</Button>
+        <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
+          {deleteDeleting ? "Deleting…" : "Delete"}
+        </Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}

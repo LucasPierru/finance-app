@@ -1,5 +1,4 @@
 import type { PageServerLoad } from "./$types";
-import { loadFinancePageData } from "$lib/server/page-data";
 import { httpGetTransactions, httpGetTransactionSummary } from "$lib/requests/transactions";
 
 function currentMonthKey(): string {
@@ -40,14 +39,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   if (categoryId) summaryParams.set("categoryId", categoryId);
   if (subCategoryId) summaryParams.set("subCategoryId", subCategoryId);
 
-  const [financePageData, pagedTransactions, txSummary] = await Promise.all([
-    loadFinancePageData(accessToken),
+  const [pagedTransactions, txSummary] = await Promise.all([
     httpGetTransactions(txParams, headers),
     httpGetTransactionSummary(summaryParams, headers),
   ]);
 
   return {
-    ...financePageData,
     pagedTransactions: pagedTransactions ?? null,
     txSummary: txSummary ?? null,
     filters: { month, page, flow, search, minAmount, maxAmount, categoryId, subCategoryId, sortBy, sortDir },

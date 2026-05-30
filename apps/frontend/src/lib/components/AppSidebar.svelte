@@ -9,16 +9,9 @@
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
   import { setTheme, theme, type ThemeName } from "$lib/stores/theme";
+  import { formatCurrency } from "$lib/utils/format";
 
   let { monthlySurplus }: { monthlySurplus: number } = $props();
-
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
-  }
 
   const navItems = [
     { label: "Overview", path: "/", icon: LayoutDashboard },
@@ -32,6 +25,9 @@
     { value: "dark", label: "Dark" },
     { value: "light", label: "Light" },
     { value: "ocean", label: "Ocean" },
+    { value: "forest", label: "Forest" },
+    { value: "sunset", label: "Sunset" },
+    { value: "midnight", label: "Midnight" },
   ];
 
   function handleThemeChange(event: Event) {
@@ -46,7 +42,7 @@
 </script>
 
 <nav
-  class="fixed inset-x-0 bottom-0 z-40 border-t border-wf-border bg-wf-sidebar px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
+  class="fixed inset-x-0 bottom-0 z-[55] border-t border-wf-border bg-wf-sidebar px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
   aria-label="Mobile navigation"
 >
   <div class="grid grid-cols-5 gap-1">
@@ -103,7 +99,7 @@
     <div class="rounded-xl border border-wf-border bg-wf-surface p-4">
       <p class="text-xs uppercase tracking-wider text-slate-500">Monthly Surplus</p>
       <p class="mt-1 font-display text-2xl font-semibold {monthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-        {fmt(monthlySurplus)}
+        {formatCurrency(monthlySurplus)}
       </p>
       <p class="mt-1 text-xs text-slate-500">Positive cash flow accelerates compounding.</p>
     </div>

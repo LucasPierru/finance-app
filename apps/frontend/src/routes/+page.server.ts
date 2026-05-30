@@ -1,8 +1,7 @@
 import type { PageServerLoad } from "./$types";
-import { loadFinancePageData } from "$lib/server/page-data";
-import { httpGetTransactions, httpGetTransactionSummary } from "$lib/requests/transactions";
+import { httpGetTransactions, httpGetTransactionSummaries } from "$lib/requests/transactions";
 import { httpGetBudgetPlans } from "$lib/requests/budget";
-import { getMonthKey, getPriorMonthKey } from "$lib/utils/date";
+import { getMonthKey, getPreviousMonthKey } from "$lib/utils/date";
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const accessToken = locals.auth.accessToken;
@@ -10,23 +9,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const month = url.searchParams.get("month") || getMonthKey(new Date());
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const previousMonth = getPreviousMonthKey(month);
 
   const transactionsParams = new URLSearchParams({ month, page: String(page), pageSize: "12" });
-  const priorMonth = getPriorMonthKey(month);
 
-  const [financePageData, pagedTransactions, budgetPlans, currentMonthSummary, priorMonthSummary] = await Promise.all([
-    loadFinancePageData(accessToken),
+  const [pagedTransactions, budgetPlans, summaries] = await Promise.all([
     httpGetTransactions(transactionsParams, headers),
     httpGetBudgetPlans(headers),
-    httpGetTransactionSummary(new URLSearchParams({ month }), headers),
-    httpGetTransactionSummary(new URLSearchParams({ month: priorMonth }), headers),
+    httpGetTransactionSummaries(month, previousMonth, headers),
   ]);
 
   return {
-    ...financePageData,
     pagedTransactions: pagedTransactions ?? null,
-    currentMonthSummary: currentMonthSummary ?? null,
-    priorMonthSummary: priorMonthSummary ?? null,
+    currentMonthSummary: summaries?.current ?? null,
+    previousMonthSummary: summaries?.previous ?? null,
     txMonth: month,
     txPage: page,
     budgetPlans: Array.isArray(budgetPlans) ? budgetPlans : [],

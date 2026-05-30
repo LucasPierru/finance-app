@@ -15,16 +15,13 @@
     type FinanceItem,
   } from "$lib/stores/finance.js";
   import { Button } from "$lib/components/ui/button";
+  import { formatCurrency } from "$lib/utils/format";
   import { Input } from "$lib/components/ui/input";
   import { Select } from "$lib/components/ui/select";
 
   type Variant = "income" | "expense";
 
   let { variant }: { variant: Variant } = $props();
-
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-  }
 
   const items = $derived(variant === "income" ? $revenues : $costs);
   const total = $derived(variant === "income" ? $totalRevenue : $totalCosts);
@@ -138,7 +135,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="text-base font-display font-700 {copy.amountClass}"
-              >{fmt(item.amount)}<span class="text-xs font-normal text-slate-500">/mo</span></span
+              >{formatCurrency(item.amount)}<span class="text-xs font-normal text-slate-500">/mo</span></span
             >
             <Button size="sm" variant="ghost" onclick={() => startEditing(item)}>Edit</Button>
             <Button size="icon" variant="outline" onclick={() => handleRemove(item.id)} aria-label="Delete entry"
@@ -150,7 +147,7 @@
     {/each}
     <div class="flex justify-between items-center px-5 py-4 bg-[#1c2030]">
       <span class="text-sm font-semibold text-slate-400">{copy.totalLabel}</span>
-      <span class="font-display text-lg font-700 {copy.amountClass}">{fmt(total)}</span>
+      <span class="font-display text-lg font-700 {copy.amountClass}">{formatCurrency(total)}</span>
     </div>
   {/if}
 </div>

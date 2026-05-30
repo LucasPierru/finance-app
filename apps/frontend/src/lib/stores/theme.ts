@@ -1,12 +1,12 @@
 import { writable } from "svelte/store";
 
-export type ThemeName = "dark" | "light" | "ocean";
+export type ThemeName = "dark" | "light" | "ocean" | "forest" | "sunset" | "midnight";
 
 const STORAGE_KEY = "finance_theme";
 const DEFAULT_THEME: ThemeName = "dark";
 
 function isTheme(value: string): value is ThemeName {
-  return value === "dark" || value === "light" || value === "ocean";
+  return ["dark", "light", "ocean", "forest", "sunset", "midnight"].includes(value);
 }
 
 function applyTheme(theme: ThemeName) {

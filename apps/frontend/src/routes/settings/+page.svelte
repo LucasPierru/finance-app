@@ -50,6 +50,9 @@
     { value: "dark", label: "Dark", description: "Current default with deep contrast." },
     { value: "light", label: "Light", description: "Bright workspace for daylight usage." },
     { value: "ocean", label: "Ocean", description: "Blue-green palette with softer contrast." },
+    { value: "forest", label: "Forest", description: "Deep green palette inspired by nature." },
+    { value: "sunset", label: "Sunset", description: "Warm amber and orange tones." },
+    { value: "midnight", label: "Midnight", description: "Rich purple palette for late-night use." },
   ];
 
   const plaidCountryOptions: Array<{ value: string; label: string }> = [

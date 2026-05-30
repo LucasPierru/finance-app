@@ -2,14 +2,12 @@
 
 <script lang="ts">
   import type { FinanceItem } from "$lib/stores/finance";
+  import { formatCurrency } from "$lib/utils/format";
 
   type Variant = "income" | "expense";
 
   let { variant, items }: { variant: Variant; items: FinanceItem[] } = $props();
 
-  function fmt(n: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-  }
   const copyByVariant: Record<Variant, { title: string; dotClass: string; emptyMessage: string; amountClass: string }> =
     {
       income: {
@@ -42,7 +40,7 @@
           <span class="text-sm text-slate-300">{item.name}</span>
           <span class="text-xs text-slate-500">{item.category}</span>
         </div>
-        <span class="text-sm font-semibold {copy.amountClass}">{fmt(item.amount)}/mo</span>
+        <span class="text-sm font-semibold {copy.amountClass}">{formatCurrency(item.amount)}/mo</span>
       </div>
     {/each}
   {/if}

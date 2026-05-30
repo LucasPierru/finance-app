@@ -19,6 +19,15 @@ import {
 
 const plaidRouter = Router();
 
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isPastMonth(month: string | undefined): boolean {
+  return typeof month === "string" && /^\d{4}-\d{2}$/.test(month) && month < currentMonthKey();
+}
+
 function mapAccount(account: any): BankAccount {
   return {
     accountId: account.account_id,
@@ -155,7 +164,7 @@ plaidRouter.get(
   ) => {
     try {
       const userId = getAuthenticatedUser(req).userId;
-      const { month, flow, search, minAmount, maxAmount, categoryId, subCategoryId } = req.query;
+      const { month, previousMonth, flow, search, minAmount, maxAmount, categoryId, subCategoryId } = req.query;
 
       const filters: TransactionFilters = {};
       if (month && /^\d{4}-\d{2}$/.test(month)) filters.month = month;
@@ -172,8 +181,17 @@ plaidRouter.get(
       if (categoryId) filters.categoryId = categoryId;
       if (subCategoryId) filters.subCategoryId = subCategoryId;
 
-      const result = await getTransactionSummary(userId, filters);
-      res.json(result);
+      if (previousMonth && /^\d{4}-\d{2}$/.test(previousMonth)) {
+        const [current, previous] = await Promise.all([
+          getTransactionSummary(userId, filters),
+          getTransactionSummary(userId, { ...filters, month: previousMonth }),
+        ]);
+        res.json({ current, previous });
+      } else {
+        if (isPastMonth(month)) res.set("Cache-Control", "private, max-age=3600");
+        const result = await getTransactionSummary(userId, filters);
+        res.json(result);
+      }
     } catch (error) {
       next(error);
     }
@@ -211,6 +229,7 @@ plaidRouter.get(
       if (sortByRaw === "date" || sortByRaw === "name" || sortByRaw === "amount") filters.sortBy = sortByRaw;
       if (sortDirRaw === "asc" || sortDirRaw === "desc") filters.sortDir = sortDirRaw;
 
+      if (isPastMonth(month)) res.set("Cache-Control", "private, max-age=3600");
       const result = await getPagedTransactions(userId, filters, page, pageSize);
       res.json(result);
     } catch (error) {

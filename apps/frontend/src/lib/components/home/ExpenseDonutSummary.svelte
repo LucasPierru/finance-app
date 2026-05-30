@@ -5,6 +5,8 @@
   import { Chart, registerables, type Chart as ChartInstance } from "chart.js";
   import { theme } from "$lib/stores/theme";
   import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import { cssHsl } from "$lib/utils/chart";
+  import { formatCurrency } from "$lib/utils/format";
 
   Chart.register(...registerables);
 
@@ -27,9 +29,7 @@
   let centerY = $state(128);
   let categoryMode = $state<"main" | "all">("main");
 
-  const formattedTotal = $derived(
-    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(total),
-  );
+  const formattedTotal = $derived(formatCurrency(total));
 
   const transactionText = $derived(
     transactionCount > 0
@@ -59,13 +59,6 @@
 
     return otherTotal > 0 ? [...mainCategories, { label: "Other", value: otherTotal }] : mainCategories;
   });
-
-  function cssHsl(variableName: string, alpha?: number): string {
-    if (typeof window === "undefined") return "#000000";
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-    if (!value) return "#000000";
-    return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
-  }
 
   function categoryPalette(label: string, index: number): string {
     if (label === "Other") {
@@ -124,14 +117,7 @@
           },
           tooltip: {
             callbacks: {
-              label: (ctx) => {
-                const value = (ctx.raw as number) ?? 0;
-                return `${ctx.label}: ${new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format(value)}`;
-              },
+              label: (ctx) => `${ctx.label}: ${formatCurrency((ctx.raw as number) ?? 0)}`,
             },
           },
         },

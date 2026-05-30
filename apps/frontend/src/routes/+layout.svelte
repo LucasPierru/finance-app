@@ -12,8 +12,10 @@
   import { initializeTheme } from "$lib/stores/theme";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
   import { bankState as bankingStore, syncBankData } from "$lib/stores/banking";
+  import { createTransactionRequest } from "$lib/stores/ui";
+  import { Plus } from "lucide-svelte";
 
-  const SYNC_THROTTLE_MS = 5 * 60 * 1000;
+  const SYNC_THROTTLE_MS = 60 * 60 * 1000;
 
   let { children }: { children: Snippet } = $props();
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
@@ -105,6 +107,16 @@
   {:else}
     <div class="flex h-full">
       <AppSidebar monthlySurplus={financeView.monthlySurplus} />
+      <!-- Floating + button: must live here, outside overflow-y-auto, so position:fixed works on mobile -->
+      {#if currentPathname === "/transactions" && activeMobileInnerNav === "transactions"}
+        <button
+          onclick={() => createTransactionRequest.update((n) => n + 1)}
+          class="fixed bottom-20 right-4 z-[45] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-opacity hover:opacity-90 md:hidden"
+          aria-label="Add transaction"
+        >
+          <Plus class="h-6 w-6" />
+        </button>
+      {/if}
       <div class="w-full overflow-y-auto md:flex-1 md:overflow-x-hidden">
         {#if mobileInnerNavItems.length > 0}
           <MobileInnerNav items={mobileInnerNavItems} active={activeMobileInnerNav} />

@@ -175,6 +175,11 @@ export interface TransactionSummary {
   dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
 }
 
+export interface CombinedTransactionSummary {
+  current: TransactionSummary;
+  previous: TransactionSummary | null;
+}
+
 export interface PagedTransactionsResult {
   transactions: BankTransaction[];
   total: number;
