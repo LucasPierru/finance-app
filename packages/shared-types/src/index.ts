@@ -172,6 +172,7 @@ export interface TransactionSummary {
   transferCount: number;
   expenseTransactionCount: number;
   categoryBreakdown: Array<{ category: string; totalAmount: number }>;
+  subCategoryBreakdown: Array<{ categoryId: string | null; subCategoryId: string; subCategoryName: string; totalAmount: number }>;
   dailyExpenseBreakdown: Array<{ date: string; totalAmount: number }>;
 }
 
@@ -299,13 +300,17 @@ export interface BudgetPlanItem {
   planId: string;
   categoryId: string | null;
   categoryName: string | null;
+  subCategoryId: string | null;
+  subCategoryName: string | null;
   amount: number;
-  period: "weekly" | "monthly" | "yearly";
+  period: "weekly" | "biweekly" | "monthly" | "yearly";
+  flow: "income" | "expense";
 }
 
 export interface BudgetPlan {
   id: string;
   name: string;
+  isFavorite: boolean;
   items: BudgetPlanItem[];
 }
 
@@ -313,8 +318,10 @@ export interface CreateBudgetPlanBody {
   name?: string;
   items?: Array<{
     categoryId?: string | null;
+    subCategoryId?: string | null;
     amount?: number;
-    period?: "weekly" | "monthly" | "yearly";
+    period?: "weekly" | "biweekly" | "monthly" | "yearly";
+    flow?: "income" | "expense";
   }>;
 }
 
@@ -322,7 +329,9 @@ export interface UpdateBudgetPlanBody {
   name?: string;
   items?: Array<{
     categoryId?: string | null;
+    subCategoryId?: string | null;
     amount?: number;
-    period?: "weekly" | "monthly" | "yearly";
+    period?: "weekly" | "biweekly" | "monthly" | "yearly";
+    flow?: "income" | "expense";
   }>;
 }

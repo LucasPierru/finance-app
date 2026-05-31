@@ -10,5 +10,8 @@ export const httpPostBudgetPlan = (body: CreateBudgetPlanBody): Promise<BudgetPl
 export const httpPutBudgetPlan = (id: string, body: UpdateBudgetPlanBody): Promise<BudgetPlan> =>
   api.put(`/api/budget/plans/${id}`, body);
 
+export const httpPutBudgetPlanFavorite = (id: string): Promise<void> =>
+  api.put(`/api/budget/plans/${id}/favorite`, {});
+
 export const httpDeleteBudgetPlan = (id: string): Promise<void> =>
   api.delete(`/api/budget/plans/${id}`);

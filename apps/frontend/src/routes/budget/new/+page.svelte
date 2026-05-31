@@ -6,7 +6,7 @@
   import BudgetPlanForm from "$lib/components/BudgetPlanForm.svelte";
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
 
-  const expenseCategories = $derived<FinanceCategory[]>(page.data.expenseCategories ?? []);
+  const allCategories = $derived<FinanceCategory[]>(page.data.allCategories ?? []);
 
   function handleCreated(_plan: BudgetPlan) {
     goto("/budget");
@@ -17,7 +17,7 @@
   }
 </script>
 
-<div class="animate-fade-up mx-auto max-w-lg space-y-6 px-4 py-6">
+<div class="animate-fade-up mx-auto max-w-lg space-y-6">
   <!-- Back link -->
   <a href="/budget" class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-slate-200">
     <svg
@@ -38,5 +38,5 @@
     <p class="mt-1 text-sm text-slate-400">Give your budget a name and add category limits.</p>
   </div>
 
-  <BudgetPlanForm {expenseCategories} oncreated={handleCreated} oncancel={handleCancel} />
+  <BudgetPlanForm categories={allCategories} oncreated={handleCreated} oncancel={handleCancel} />
 </div>

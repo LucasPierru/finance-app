@@ -1,26 +1,39 @@
 import type { BudgetPlanItem } from "@finance-app/shared-types";
 import type { FinanceItem } from "$lib/stores/finance";
 
-export type Period = "weekly" | "monthly" | "yearly";
+export type Period = "weekly" | "biweekly" | "monthly" | "yearly";
 
 export function toMonthly(amount: number, period: Period): number {
   if (period === "weekly") return (amount * 52) / 12;
+  if (period === "biweekly") return (amount * 26) / 12;
   if (period === "yearly") return amount / 12;
   return amount;
 }
 
 export function periodLabel(period: Period): string {
-  return period === "weekly" ? "/ wk" : period === "yearly" ? "/ yr" : "/ mo";
+  if (period === "weekly") return "/ wk";
+  if (period === "biweekly") return "/ 2wk";
+  if (period === "yearly") return "/ yr";
+  return "/ mo";
 }
 
-export function spentForItem(item: BudgetPlanItem, costs: FinanceItem[]): number {
+export type CostItem = FinanceItem & { subCategoryId?: string };
+
+export function spentForItem(item: BudgetPlanItem, costs: CostItem[]): number {
+  if (item.subCategoryId) {
+    return costs
+      .filter((c) => c.subCategoryId === item.subCategoryId)
+      .reduce((sum, c) => sum + c.amount, 0);
+  }
   if (!item.categoryId) return 0;
-  return costs.filter((c) => c.categoryId === item.categoryId).reduce((sum, c) => sum + c.amount, 0);
+  return costs
+    .filter((c) => c.categoryId === item.categoryId)
+    .reduce((sum, c) => sum + c.amount, 0);
 }
 
 export function itemProgress(
   item: BudgetPlanItem,
-  costs: FinanceItem[],
+  costs: CostItem[],
 ): { spent: number; monthly: number; pct: number; over: boolean; remaining: number } {
   const monthly = toMonthly(item.amount, item.period as Period);
   const spent = spentForItem(item, costs);

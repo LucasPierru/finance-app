@@ -5,7 +5,7 @@
   import { Chart, registerables, type Chart as ChartInstance } from "chart.js";
   import { theme } from "$lib/stores/theme";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
-  import type { FinanceItem } from "$lib/stores/finance";
+  import type { CostItem } from "$lib/utils/budget";
   import type { BudgetPlan } from "@finance-app/shared-types";
   import { toMonthly, spentForItem } from "$lib/utils/budget";
   import { cssHsl, SPENT_OK, SPENT_WARN, SPENT_OVER } from "$lib/utils/chart";
@@ -18,7 +18,7 @@
     costs,
   }: {
     selectedPlan: BudgetPlan | null;
-    costs: FinanceItem[];
+    costs: CostItem[];
   } = $props();
 
   let donutCanvas: HTMLCanvasElement | undefined = $state();
@@ -28,12 +28,14 @@
   let donutCenterY = $state(80);
 
   const utilizationData = $derived.by(() => {
-    if (!selectedPlan || selectedPlan.items.length === 0) return null;
-    const totalBudget = selectedPlan.items.reduce(
+    if (!selectedPlan) return null;
+    const expenseItems = selectedPlan.items.filter((i) => (i.flow ?? "expense") === "expense");
+    if (expenseItems.length === 0) return null;
+    const totalBudget = expenseItems.reduce(
       (sum, item) => sum + toMonthly(item.amount, item.period),
       0,
     );
-    const totalSpent = selectedPlan.items.reduce((sum, item) => sum + spentForItem(item, costs), 0);
+    const totalSpent = expenseItems.reduce((sum, item) => sum + spentForItem(item, costs), 0);
     const pct = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
     const remaining = Math.max(totalBudget - totalSpent, 0);
     const isOver = totalSpent > totalBudget;

@@ -1,139 +1,72 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Chart, registerables, type Chart as ChartInstance } from "chart.js";
-  import { theme } from "$lib/stores/theme";
-  import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
-  import type { FinanceItem } from "$lib/stores/finance";
+  import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import type { CostItem, Period } from "$lib/utils/budget";
   import type { BudgetPlan } from "@finance-app/shared-types";
-  import { toMonthly, spentForItem, spentColor } from "$lib/utils/budget";
-  import { cssHsl } from "$lib/utils/chart";
+  import { toMonthly, spentForItem } from "$lib/utils/budget";
   import { formatCurrency } from "$lib/utils/format";
-
-  Chart.register(...registerables);
 
   let {
     selectedPlan,
     costs,
   }: {
     selectedPlan: BudgetPlan | null;
-    costs: FinanceItem[];
+    costs: CostItem[];
   } = $props();
 
-  let barCanvas: HTMLCanvasElement | undefined = $state();
-  let barChart: ChartInstance | undefined;
-  let mounted = $state(false);
-
-  const chartData = $derived.by(() => {
-    if (!selectedPlan || selectedPlan.items.length === 0) return null;
-    return {
-      labels: selectedPlan.items.map((item) => item.categoryName ?? "General"),
-      budgets: selectedPlan.items.map((item) => toMonthly(item.amount, item.period)),
-      spent: selectedPlan.items.map((item) => spentForItem(item, costs)),
-    };
-  });
-
-  function render() {
-    if (typeof window === "undefined" || !barCanvas || !chartData) return;
-    barChart?.destroy();
-    const { labels, budgets, spent } = chartData;
-    barCanvas.parentElement!.style.minHeight = `${Math.max(labels.length * 56, 160)}px`;
-    barChart = new Chart(barCanvas, {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Budget",
-            data: budgets,
-            backgroundColor: cssHsl("--muted", 0.7),
-            borderRadius: 4,
-            borderSkipped: false,
-          },
-          {
-            label: "Spent",
-            data: spent,
-            backgroundColor: spent.map((s, i) => spentColor(s, budgets[i])),
-            borderRadius: 4,
-            borderSkipped: false,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: "y",
-        plugins: {
-          legend: {
-            display: true,
-            position: "top",
-            align: "start",
-            labels: {
-              color: cssHsl("--muted-foreground"),
-              boxWidth: 10,
-              boxHeight: 10,
-              borderRadius: 3,
-              useBorderRadius: true,
-              padding: 16,
-              font: { size: 12 },
-            },
-          },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => ` ${ctx.dataset.label}: ${formatCurrency(ctx.parsed.x as number)}`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: cssHsl("--border", 0.5) },
-            ticks: {
-              color: cssHsl("--muted-foreground"),
-              font: { size: 11 },
-              callback: (v) =>
-                new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  notation: "compact",
-                  maximumFractionDigits: 0,
-                }).format(v as number),
-            },
-          },
-          y: {
-            grid: { display: false },
-            ticks: { color: cssHsl("--muted-foreground"), font: { size: 12 } },
-          },
-        },
-      },
-    });
-  }
-
-  onMount(() => {
-    mounted = true;
-    render();
-  });
-
-  $effect(() => {
-    if (!mounted) return;
-    chartData;
-    $theme;
-    render();
+  const rows = $derived.by(() => {
+    if (!selectedPlan) return [];
+    return selectedPlan.items
+      .filter((i) => (i.flow ?? "expense") === "expense")
+      .map((i) => {
+        const budget = toMonthly(i.amount, i.period as Period);
+        const spent = spentForItem(i, costs);
+        const pct = budget > 0 ? (spent / budget) * 100 : 0;
+        return {
+          label: i.subCategoryName ?? i.categoryName ?? "General",
+          budget,
+          spent,
+          pct,
+          over: spent > budget,
+        };
+      })
+      .sort((a, b) => b.budget - a.budget);
   });
 </script>
 
 <Card class="h-full">
-  <CardHeader class="pb-2">
+  <CardHeader class="pb-3">
     <CardTitle class="text-base">Budget vs Actual</CardTitle>
-    <CardDescription>Monthly spending limits compared to actual expenses.</CardDescription>
   </CardHeader>
-  <CardContent>
-    {#if chartData && chartData.labels.length > 0}
-      <div class="relative" style="min-height: 160px;">
-        <canvas bind:this={barCanvas}></canvas>
-      </div>
+  <CardContent class="space-y-3">
+    {#if rows.length === 0}
+      <p class="py-6 text-center text-sm text-slate-500">No category limits to display.</p>
     {:else}
-      <p class="py-8 text-center text-sm text-slate-500">No category limits to display.</p>
+      {#each rows as row}
+        <div class="space-y-1.5">
+          <div class="flex items-baseline justify-between gap-3 text-sm">
+            <span class="truncate text-slate-300">{row.label}</span>
+            <span class="shrink-0 tabular-nums text-slate-400">
+              <span class="{row.over ? 'text-rose-400' : 'text-slate-200'} font-medium">
+                {formatCurrency(row.spent)}
+              </span>
+              <span class="text-slate-600"> / </span>
+              {formatCurrency(row.budget)}
+            </span>
+          </div>
+          <div class="h-1.5 w-full overflow-hidden rounded-full bg-[#1c2030]">
+            <div
+              class="h-1.5 rounded-full transition-all {row.over
+                ? 'bg-rose-500'
+                : row.pct >= 80
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-500'}"
+              style="width: {Math.min(row.pct, 100)}%"
+            ></div>
+          </div>
+        </div>
+      {/each}
     {/if}
   </CardContent>
 </Card>

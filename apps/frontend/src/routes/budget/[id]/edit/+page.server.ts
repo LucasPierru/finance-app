@@ -19,6 +19,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     plan,
-    expenseCategories: Array.isArray(categories) ? categories.filter((c) => c.type === "expense") : [],
+    allCategories: Array.isArray(categories) ? categories : [],
   };
 };

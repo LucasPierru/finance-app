@@ -1,8 +1,8 @@
 import { Router, type Request } from "express";
 import { getAuthenticatedUser } from "@middleware/auth";
 import { createBudget, deleteBudget, getBudgets, updateBudget } from "@repositories/budget";
-import { createBudgetPlan, deleteBudgetPlan, getBudgetPlans, updateBudgetPlan } from "@repositories/budget-plan";
-import type { Budget, BudgetPlan, CreateBudgetBody, CreateBudgetPlanBody, UpdateBudgetBody } from "@lib/types";
+import { createBudgetPlan, deleteBudgetPlan, getBudgetPlans, setFavoriteBudgetPlan, updateBudgetPlan } from "@repositories/budget-plan";
+import type { Budget, BudgetPlan, CreateBudgetBody, CreateBudgetPlanBody, UpdateBudgetBody, UpdateBudgetPlanBody } from "@lib/types";
 import { AppError } from "@lib/errors";
 
 export const budgetRouter = Router();
@@ -133,13 +133,16 @@ budgetRouter.post(
           throw new AppError(400, `Item ${i + 1}: amount must be a positive number`);
         }
         const period = item.period;
-        if (period !== "weekly" && period !== "monthly" && period !== "yearly") {
-          throw new AppError(400, `Item ${i + 1}: period must be weekly, monthly, or yearly`);
+        if (period !== "weekly" && period !== "biweekly" && period !== "monthly" && period !== "yearly") {
+          throw new AppError(400, `Item ${i + 1}: period must be weekly, biweekly, monthly, or yearly`);
         }
+        const flow: "income" | "expense" = item.flow === "income" ? "income" : "expense";
         return {
           categoryId: item.categoryId ?? null,
+          subCategoryId: item.subCategoryId ?? null,
           amount,
           period,
+          flow,
         };
       });
 
@@ -173,10 +176,11 @@ budgetRouter.put(
           throw new AppError(400, `Item ${i + 1}: amount must be a positive number`);
         }
         const period = item.period;
-        if (period !== "weekly" && period !== "monthly" && period !== "yearly") {
-          throw new AppError(400, `Item ${i + 1}: period must be weekly, monthly, or yearly`);
+        if (period !== "weekly" && period !== "biweekly" && period !== "monthly" && period !== "yearly") {
+          throw new AppError(400, `Item ${i + 1}: period must be weekly, biweekly, monthly, or yearly`);
         }
-        return { categoryId: item.categoryId ?? null, amount, period };
+        const flow: "income" | "expense" = item.flow === "income" ? "income" : "expense";
+        return { categoryId: item.categoryId ?? null, subCategoryId: item.subCategoryId ?? null, amount, period, flow };
       });
 
       const plan = await updateBudgetPlan(userId, id, name.trim(), validatedItems);
@@ -186,6 +190,16 @@ budgetRouter.put(
     }
   },
 );
+
+budgetRouter.put("/plans/:id/favorite", async (req: Request<{ id: string }>, res, next) => {
+  try {
+    const { userId } = getAuthenticatedUser(req);
+    await setFavoriteBudgetPlan(userId, req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
 
 budgetRouter.delete("/plans/:id", async (req: Request<{ id: string }>, res, next) => {
   try {

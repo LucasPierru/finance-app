@@ -8,6 +8,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const categories = await httpGetFinanceCategories(headers);
 
   return {
-    expenseCategories: Array.isArray(categories) ? categories.filter((c) => c.type === "expense") : [],
+    allCategories: Array.isArray(categories) ? categories : [],
   };
 };

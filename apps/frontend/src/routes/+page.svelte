@@ -101,14 +101,15 @@
     ),
   );
 
-  const currentMonthCosts = $derived.by<import("$lib/stores/finance").FinanceItem[]>(() => {
+  const currentMonthCosts = $derived.by<import("$lib/utils/budget").CostItem[]>(() => {
     const breakdown = page.data.currentMonthSummary?.categoryBreakdown ?? [];
     const categories = page.data.allCategories ?? [];
     if (breakdown.length === 0) return financeView.costs;
-    return breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
+
+    const catItems = breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
       const cat = categories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
       return {
-        id: `month-${i}`,
+        id: `month-cat-${i}`,
         name: b.category,
         category: b.category,
         categoryId: cat?.id,
@@ -117,6 +118,21 @@
         frequency: "monthly" as const,
       };
     });
+
+    const subItems = (page.data.currentMonthSummary?.subCategoryBreakdown ?? []).map(
+      (s: { categoryId: string | null; subCategoryId: string; subCategoryName: string; totalAmount: number }, i: number) => ({
+        id: `month-sub-${i}`,
+        name: s.subCategoryName,
+        category: s.subCategoryName,
+        categoryId: s.categoryId ?? undefined,
+        subCategoryId: s.subCategoryId,
+        amount: s.totalAmount,
+        rawAmount: s.totalAmount.toFixed(2),
+        frequency: "monthly" as const,
+      }),
+    );
+
+    return [...catItems, ...subItems];
   });
 
   const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));

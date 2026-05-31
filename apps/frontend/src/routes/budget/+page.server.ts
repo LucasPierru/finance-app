@@ -20,9 +20,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   return {
     budgetPlans: Array.isArray(budgetPlans) ? budgetPlans : [],
-    expenseCategories: Array.isArray(categories)
-      ? categories.filter((c) => c.type === "expense")
-      : [],
+    allCategories: Array.isArray(categories) ? categories : [],
+    expenseCategories: Array.isArray(categories) ? categories.filter((c) => c.type === "expense") : [],
     currentMonthSummary: currentMonthSummary ?? null,
     month,
   };

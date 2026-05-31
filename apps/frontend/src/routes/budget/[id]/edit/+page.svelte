@@ -7,7 +7,7 @@
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
 
   const plan = $derived<BudgetPlan>(page.data.plan);
-  const expenseCategories = $derived<FinanceCategory[]>(page.data.expenseCategories ?? []);
+  const allCategories = $derived<FinanceCategory[]>(page.data.allCategories ?? []);
 
   function handleUpdated(_plan: BudgetPlan) {
     goto("/budget");
@@ -18,7 +18,7 @@
   }
 </script>
 
-<div class="animate-fade-up mx-auto max-w-lg space-y-6 px-4 py-6">
+<div class="animate-fade-up mx-auto max-w-lg space-y-6">
   <!-- Back link -->
   <a href="/budget" class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-slate-200">
     <svg
@@ -39,5 +39,5 @@
     <p class="mt-1 text-sm text-slate-400">Update the name and category limits for this budget.</p>
   </div>
 
-  <BudgetPlanForm {expenseCategories} editPlan={plan} onupdated={handleUpdated} oncancel={handleCancel} />
+  <BudgetPlanForm categories={allCategories} editPlan={plan} onupdated={handleUpdated} oncancel={handleCancel} />
 </div>

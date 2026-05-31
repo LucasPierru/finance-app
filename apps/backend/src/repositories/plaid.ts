@@ -272,7 +272,7 @@ export async function getTransactionSummary(
     FALSE
   )`;
 
-  const [summaryResult, breakdownResult, dailyResult] = await Promise.all([
+  const [summaryResult, breakdownResult, subBreakdownResult, dailyResult] = await Promise.all([
     pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN t.flow = 'income'  AND NOT ${isTransfer} THEN t.amount ELSE 0 END), 0) AS total_income,
@@ -292,6 +292,21 @@ export async function getTransactionSummary(
          AND t.flow = 'expense'
          AND NOT ${isTransfer}
        GROUP BY COALESCE(c.name, t.plaid_category->>0, 'Other')
+       ORDER BY total_amount DESC`,
+      params,
+    ),
+    pool.query(
+      `SELECT
+         t.category_id,
+         sc.id AS sub_category_id,
+         sc.name AS sub_category_name,
+         SUM(t.amount) AS total_amount
+       FROM transactions t
+       JOIN subcategories sc ON sc.id = t.sub_category_id
+       WHERE ${where}
+         AND t.flow = 'expense'
+         AND NOT ${isTransfer}
+       GROUP BY t.category_id, sc.id, sc.name
        ORDER BY total_amount DESC`,
       params,
     ),
@@ -317,6 +332,12 @@ export async function getTransactionSummary(
     expenseTransactionCount: Number(summaryRow.expense_count),
     categoryBreakdown: breakdownResult.rows.map((r) => ({
       category: String(r.category),
+      totalAmount: Number(r.total_amount),
+    })),
+    subCategoryBreakdown: subBreakdownResult.rows.map((r) => ({
+      categoryId: r.category_id != null ? String(r.category_id) : null,
+      subCategoryId: String(r.sub_category_id),
+      subCategoryName: String(r.sub_category_name),
       totalAmount: Number(r.total_amount),
     })),
     dailyExpenseBreakdown: dailyResult.rows.map((r) => ({

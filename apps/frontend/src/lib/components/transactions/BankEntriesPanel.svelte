@@ -19,6 +19,7 @@
   import type { FinanceCategory } from "@finance-app/shared-types";
   import { createTransactionRequest, get } from "$lib/stores/ui";
   import Pagination from "$lib/components/Pagination.svelte";
+  import DeleteModal from "$lib/components/DeleteModal.svelte";
 
   type Mode = "transactions" | "recurring";
 
@@ -298,14 +299,17 @@
 
   // ── Edit / Delete modal state ─────────────────────────────────────────────
   let modalTx = $state<TransactionItem | null>(null);
-  let modalMode = $state<"edit" | "delete" | null>(null);
+  let modalMode = $state<"edit" | null>(null);
   let editCategoryId = $state("");
   let editSubCategoryId = $state("");
   let editFlow = $state<"income" | "expense">("expense");
   let editIsInternal = $state(false);
   let editSaving = $state(false);
   let applyToSimilar = $state(false);
-  let deleteDeleting = $state(false);
+
+  let deleteTx = $state<TransactionItem | null>(null);
+  let deleteModalOpen = $state(false);
+  let deleteLoading = $state(false);
 
   const editFlowCategories = $derived(categories.filter((c) => c.type === editFlow));
 
@@ -346,8 +350,8 @@
   }
 
   function openDeleteModal(tx: TransactionItem) {
-    modalTx = tx;
-    modalMode = "delete";
+    deleteTx = tx;
+    deleteModalOpen = true;
   }
 
   function closeModal() {
@@ -374,15 +378,15 @@
   }
 
   async function confirmDelete() {
-    if (!modalTx) return;
-    deleteDeleting = true;
+    if (!deleteTx) return;
+    deleteLoading = true;
     try {
-      await httpDeleteTransaction(modalTx.transactionId);
-      const id = modalTx.transactionId;
-      closeModal();
+      await httpDeleteTransaction(deleteTx.transactionId);
+      const id = deleteTx.transactionId;
+      deleteTx = null;
       onTransactionDeleted?.(id);
     } finally {
-      deleteDeleting = false;
+      deleteLoading = false;
     }
   }
 </script>
@@ -928,50 +932,10 @@
 {/if}
 
 <!-- ── Delete Transaction ──────────────────────────────────────────────── -->
-{#if isMobile}
-  <Drawer.Root open={modalMode === "delete" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
-    <Drawer.Content>
-      <Drawer.Header class="text-left">
-        <div class="flex items-center gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-900/40">
-            <Trash2 class="h-4 w-4 text-rose-400" />
-          </div>
-          <div>
-            <Drawer.Title>Delete Transaction</Drawer.Title>
-            <Drawer.Description>This action cannot be undone.</Drawer.Description>
-          </div>
-        </div>
-      </Drawer.Header>
-      <p class="px-4 truncate text-sm font-medium text-slate-200">{modalTx?.name ?? ""}</p>
-      <Drawer.Footer>
-        <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
-          {deleteDeleting ? "Deleting…" : "Delete"}
-        </Button>
-        <Button variant="outline" onclick={closeModal}>Cancel</Button>
-      </Drawer.Footer>
-    </Drawer.Content>
-  </Drawer.Root>
-{:else}
-  <Dialog.Root open={modalMode === "delete" && modalTx !== null} onOpenChange={(v) => { if (!v) closeModal(); }}>
-    <Dialog.Content>
-      <Dialog.Header class="text-left">
-        <div class="flex items-center gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-900/40">
-            <Trash2 class="h-4 w-4 text-rose-400" />
-          </div>
-          <div>
-            <Dialog.Title>Delete Transaction</Dialog.Title>
-            <Dialog.Description>This action cannot be undone.</Dialog.Description>
-          </div>
-        </div>
-      </Dialog.Header>
-      <p class="mt-3 truncate text-sm font-medium text-slate-200">{modalTx?.name ?? ""}</p>
-      <Dialog.Footer class="mt-4">
-        <Button variant="outline" onclick={closeModal}>Cancel</Button>
-        <Button class="bg-rose-600 text-white hover:bg-rose-700" onclick={confirmDelete} disabled={deleteDeleting}>
-          {deleteDeleting ? "Deleting…" : "Delete"}
-        </Button>
-      </Dialog.Footer>
-    </Dialog.Content>
-  </Dialog.Root>
-{/if}
+<DeleteModal
+  bind:open={deleteModalOpen}
+  title="Delete transaction"
+  description={deleteTx ? `"${deleteTx.name}" will be permanently removed.` : undefined}
+  onconfirm={confirmDelete}
+  loading={deleteLoading}
+/>

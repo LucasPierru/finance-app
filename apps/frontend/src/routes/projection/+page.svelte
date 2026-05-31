@@ -1,22 +1,56 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { page } from "$app/state";
   import {
     investmentSettings,
     effectiveTotalRevenue,
     effectiveTotalCosts,
-    effectiveMonthlySurplus,
     calculateProjection,
   } from "$lib/stores/finance.js";
   import { theme } from "$lib/stores/theme";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
+  import { Select } from "$lib/components/ui/select";
   import { cssHsl } from "$lib/utils/chart";
   import { formatCurrency } from "$lib/utils/format";
+  import { toMonthly } from "$lib/utils/budget";
+  import type { BudgetPlan } from "@finance-app/shared-types";
+
+  const budgetPlans = $derived<BudgetPlan[]>(page.data.budgetPlans ?? []);
 
   let chartCanvas = $state<HTMLCanvasElement | undefined>(undefined);
   let chartInstance = $state<import("chart.js").Chart | undefined>(undefined);
+
+  /** Selected budget plan id, or "" for finance data. Defaults to favorite or first plan. */
+  let selectedPlanId = $state<string>(
+    untrack(() => {
+      const plans: BudgetPlan[] = page.data.budgetPlans ?? [];
+      const fav = plans.find((p) => p.isFavorite);
+      return (fav ?? plans[0])?.id ?? "";
+    }),
+  );
+
+  const selectedPlan = $derived(budgetPlans.find((p) => p.id === selectedPlanId) ?? null);
+
+  const budgetMonthlyIncome = $derived.by(() => {
+    if (!selectedPlan) return 0;
+    return selectedPlan.items
+      .filter((i) => i.flow === "income")
+      .reduce((sum, i) => sum + toMonthly(i.amount, i.period), 0);
+  });
+
+  const budgetMonthlyExpenses = $derived.by(() => {
+    if (!selectedPlan) return 0;
+    return selectedPlan.items
+      .filter((i) => (i.flow ?? "expense") === "expense")
+      .reduce((sum, i) => sum + toMonthly(i.amount, i.period), 0);
+  });
+
+  const activeRevenue = $derived(selectedPlan ? budgetMonthlyIncome : $effectiveTotalRevenue);
+  const activeCosts = $derived(selectedPlan ? budgetMonthlyExpenses : $effectiveTotalCosts);
+  const activeSurplus = $derived(activeRevenue - activeCosts);
 
   function fmtK(n: number): string {
     const abs = Math.abs(n);
@@ -85,11 +119,20 @@
     });
   }
 
-  const projection = $derived(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings));
+  const projection = $derived(calculateProjection(activeRevenue, activeCosts, $investmentSettings));
+
+  function scheduleRender() {
+    setTimeout(() => renderChart(calculateProjection(activeRevenue, activeCosts, $investmentSettings)), 10);
+  }
 
   $effect(() => {
     $theme;
     if (chartCanvas) renderChart(projection);
+  });
+
+  $effect(() => {
+    selectedPlanId;
+    scheduleRender();
   });
 
   onMount(() => {
@@ -98,6 +141,24 @@
 </script>
 
 <div class="animate-fade-up">
+  <!-- Budget plan source selector -->
+  {#if budgetPlans.length > 0}
+    <div class="mb-5 flex items-center gap-3 rounded-xl border border-[#252a3a] bg-[#13161e] px-4 py-3">
+      <span class="text-sm text-slate-400 shrink-0">Income source</span>
+      <Select bind:value={selectedPlanId} class="h-9 max-w-xs text-sm">
+        <option value="">Finance data (automatic)</option>
+        {#each budgetPlans as plan (plan.id)}
+          <option value={plan.id}>{plan.isFavorite ? "★ " : ""}{plan.name}</option>
+        {/each}
+      </Select>
+      {#if selectedPlan}
+        <span class="text-xs text-slate-500">
+          {formatCurrency(budgetMonthlyIncome)}/mo income · {formatCurrency(budgetMonthlyExpenses)}/mo expenses
+        </span>
+      {/if}
+    </div>
+  {/if}
+
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
     <div class="bg-[#13161e] border border-[#252a3a] rounded-xl p-4">
       <Label for="annual-return" class="mb-2 block">Annual Return %</Label>
@@ -108,13 +169,7 @@
         min="0"
         max="50"
         step="0.5"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
@@ -126,13 +181,7 @@
         bind:value={$investmentSettings.years}
         min="1"
         max="50"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
@@ -143,13 +192,7 @@
         type="number"
         bind:value={$investmentSettings.initialAmount}
         min="0"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
@@ -162,13 +205,7 @@
         min="0"
         max="20"
         step="0.1"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
@@ -181,13 +218,7 @@
         min="-10"
         max="20"
         step="0.1"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
@@ -200,27 +231,24 @@
         min="-10"
         max="20"
         step="0.1"
-        onchange={() => {
-          investmentSettings.update((s) => ({ ...s }));
-          setTimeout(
-            () => renderChart(calculateProjection($effectiveTotalRevenue, $effectiveTotalCosts, $investmentSettings)),
-            10,
-          );
-        }}
+        onchange={scheduleRender}
         class="h-10 text-base font-semibold"
       />
     </div>
     <div class="bg-[#13161e] border border-[#252a3a] rounded-xl p-4 flex flex-col justify-between">
-      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">Monthly Investment</p>
-      <span
-        class="font-display text-xl font-700 {$effectiveMonthlySurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}"
-      >
-        {formatCurrency($effectiveMonthlySurplus)}
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+        Monthly Investment
+        {#if selectedPlan}
+          <span class="ml-1 normal-case font-normal text-slate-600">({selectedPlan.name})</span>
+        {/if}
+      </p>
+      <span class="font-display text-xl font-700 {activeSurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+        {formatCurrency(activeSurplus)}
       </span>
     </div>
   </div>
 
-  {#if $effectiveMonthlySurplus < 0}
+  {#if activeSurplus < 0}
     <div
       class="flex items-center gap-2.5 bg-rose-500/10 border border-rose-500/25 rounded-xl px-4 py-3 mb-5 text-rose-400 text-sm"
     >
@@ -231,8 +259,11 @@
           d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
         />
       </svg>
-      Your expenses exceed revenue by <strong>{formatCurrency(Math.abs($effectiveMonthlySurplus))}/mo</strong>. Reduce costs to
-      start investing.
+      {#if selectedPlan}
+        Your budget expenses exceed income by <strong>{formatCurrency(Math.abs(activeSurplus))}/mo</strong>. Adjust your budget to start investing.
+      {:else}
+        Your expenses exceed revenue by <strong>{formatCurrency(Math.abs(activeSurplus))}/mo</strong>. Reduce costs to start investing.
+      {/if}
     </div>
   {/if}
 

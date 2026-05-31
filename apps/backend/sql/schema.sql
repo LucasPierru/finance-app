@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS budget_plans (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  is_favorite BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -158,8 +159,11 @@ CREATE TABLE IF NOT EXISTS budget_plan_items (
   plan_id TEXT NOT NULL REFERENCES budget_plans(id) ON DELETE CASCADE,
   category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   category_name TEXT,
+  sub_category_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL,
+  sub_category_name TEXT,
   amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
-  period TEXT NOT NULL CHECK (period IN ('weekly', 'monthly', 'yearly')),
+  period TEXT NOT NULL CHECK (period IN ('weekly', 'biweekly', 'monthly', 'yearly')),
+  flow TEXT NOT NULL DEFAULT 'expense' CHECK (flow IN ('income', 'expense')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
