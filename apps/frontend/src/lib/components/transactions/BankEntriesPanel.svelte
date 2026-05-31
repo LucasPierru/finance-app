@@ -9,6 +9,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Select } from "$lib/components/ui/select";
   import { SlidersHorizontal, Pencil, Trash2, LoaderCircle, ArrowUpDown, ArrowUp, ArrowDown, Calendar as CalendarIcon } from "lucide-svelte";
+  import CategorySelect from "$lib/components/CategorySelect.svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Drawer from "$lib/components/ui/drawer";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -730,15 +731,13 @@
     </div>
     <div class="flex flex-col gap-1.5">
       <Label class="text-sm text-slate-400">Category</Label>
-      <Select class="h-9" value={createSelectedValue} onchange={(e) => handleCreateCategorySelect((e.target as HTMLSelectElement).value)}>
-        <option value="">No category</option>
-        {#each createFlowCategories as cat (cat.id)}
-          <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-          {#each cat.subCategories as sub (sub.id)}
-            <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
-          {/each}
-        {/each}
-      </Select>
+      <CategorySelect
+        categories={createFlowCategories}
+        bind:value={createSelectedValue}
+        placeholder="No category"
+        onchange={handleCreateCategorySelect}
+        class="h-9"
+      />
     </div>
   </div>
 {/snippet}
@@ -803,15 +802,13 @@
     </div>
     <div class="flex flex-col gap-1.5">
       <Label class="text-sm text-slate-400">Category</Label>
-      <Select class="h-10" value={editSelectedValue} onchange={(e) => handleCategorySelect((e.target as HTMLSelectElement).value)}>
-        <option value="">Auto-detect</option>
-        {#each editFlowCategories as cat (cat.id)}
-          <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-          {#each cat.subCategories as sub (sub.id)}
-            <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
-          {/each}
-        {/each}
-      </Select>
+      <CategorySelect
+        categories={editFlowCategories}
+        bind:value={editSelectedValue}
+        placeholder="Auto-detect"
+        onchange={handleCategorySelect}
+        class="h-10"
+      />
     </div>
     <div class="flex items-center gap-3">
       <Checkbox bind:checked={editIsInternal} class="size-5 md:size-4 shrink-0" />

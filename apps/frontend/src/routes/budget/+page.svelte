@@ -17,6 +17,7 @@
   import { toMonthly, periodLabel, itemProgress, type CostItem, type Period } from "$lib/utils/budget";
   import { formatCurrency } from "$lib/utils/format";
   import { getMonthKey } from "$lib/utils/date";
+  import { Star, Pencil, Trash2, X } from "lucide-svelte";
 
   const financeState = $derived(page.data.initialFinanceState ?? emptyFinanceState);
   const bankState = $derived(page.data.initialBankState ?? emptyBankState);
@@ -273,9 +274,7 @@
                     aria-label={plan.isFavorite ? "Remove as default" : "Set as default for projection"}
                     title={plan.isFavorite ? "Default for projection" : "Set as default for projection"}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill={plan.isFavorite ? "currentColor" : "none"} stroke="currentColor" stroke-width="2">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
+                    <Star class="h-4 w-4" fill={plan.isFavorite ? "currentColor" : "none"} />
                   </button>
 
                   <!-- Edit — mobile navigates, desktop opens modal -->
@@ -285,10 +284,7 @@
                     size="sm"
                     class="md:hidden gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-                    </svg>
+                    <Pencil class="h-3.5 w-3.5" />
                     Edit
                   </Button>
                   <Button
@@ -297,10 +293,7 @@
                     size="sm"
                     class="hidden md:inline-flex gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-                    </svg>
+                    <Pencil class="h-3.5 w-3.5" />
                     Edit
                   </Button>
 
@@ -311,12 +304,7 @@
                     size="sm"
                     class="gap-1.5"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                    </svg>
+                    <Trash2 class="h-3.5 w-3.5" />
                     Delete
                   </Button>
                 </div>
@@ -427,9 +415,7 @@
         {editingPlan ? "Edit budget" : "New budget"}
       </h2>
       <Dialog.Close class="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 6 6 18M6 6l12 12" />
-        </svg>
+        <X class="h-4 w-4" />
         <span class="sr-only">Close</span>
       </Dialog.Close>
     </div>

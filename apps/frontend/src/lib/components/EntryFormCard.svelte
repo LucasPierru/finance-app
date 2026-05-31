@@ -5,12 +5,8 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Select } from "$lib/components/ui/select";
-
-  interface Category {
-    id: string;
-    name: string;
-    type: string;
-  }
+  import CategorySelect from "$lib/components/CategorySelect.svelte";
+  import type { FinanceCategory } from "@finance-app/shared-types";
 
   type Variant = "income" | "expense";
   type Frequency = FinanceItem["frequency"];
@@ -21,15 +17,24 @@
   let amount = $state("");
   let frequency = $state<Frequency>("monthly");
   let categoryId = $state<string>("");
-  let categories = $state<Category[]>([]);
+  let categories = $state<FinanceCategory[]>([]);
 
   const categoryOptions = $derived(categories.filter((c) => c.type === variant));
 
-  const selectedCategory = $derived(categories.find((c) => c.id === categoryId));
+  const categoryName = $derived.by(() => {
+    if (!categoryId) return "";
+    for (const cat of categoryOptions) {
+      if (cat.id === categoryId) return cat.name;
+      for (const sub of cat.subCategories) {
+        if (sub.id === categoryId) return sub.name;
+      }
+    }
+    return "";
+  });
 
   onMount(async () => {
     try {
-      const data = await api.get<Category[]>('/api/finance/categories');
+      const data = await api.get<FinanceCategory[]>('/api/finance/categories');
       categories = data;
       const filtered = data.filter((c) => c.type === variant);
       if (filtered.length > 0) categoryId = filtered[0].id;
@@ -59,7 +64,6 @@
     if (!normalizedName || !normalizedRawAmount) return;
 
     const monthly = toMonthly(Number(normalizedRawAmount), frequency);
-    const categoryName = selectedCategory?.name ?? "";
 
     if (variant === "income") {
       addRevenue({
@@ -111,11 +115,12 @@
       {/if}
       <option value="yearly">Yearly</option>
     </Select>
-    <Select bind:value={categoryId} class="h-11 flex-1 min-w-[130px]">
-      {#each categoryOptions as option}
-        <option value={option.id}>{option.name}</option>
-      {/each}
-    </Select>
+    <CategorySelect
+      categories={categoryOptions}
+      bind:value={categoryId}
+      placeholder="No category"
+      class="h-11 flex-1 min-w-[130px]"
+    />
     <Button onclick={handleSubmit} class="h-11 px-5">+ Add</Button>
   </div>
 </div>

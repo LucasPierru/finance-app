@@ -8,6 +8,7 @@
   import { untrack } from "svelte";
   import { Plus, Trash2 } from "lucide-svelte";
   import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
+  import CategorySelect from "$lib/components/CategorySelect.svelte";
   import { toMonthly } from "$lib/utils/budget";
 
   type Period = "weekly" | "biweekly" | "monthly" | "yearly";
@@ -173,15 +174,12 @@
 
     {#each incomeItems as item (item.key)}
       <div class="flex items-center gap-2">
-        <Select bind:value={item.selectValue} class="h-9 min-w-0 flex-[2]">
-          <option value="">No category</option>
-          {#each incomeCategories as cat (cat.id)}
-            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-            {#each cat.subCategories as sub (sub.id)}
-              <option value={sub.id}>{sub.name}</option>
-            {/each}
-          {/each}
-        </Select>
+        <CategorySelect
+          categories={incomeCategories}
+          bind:value={item.selectValue}
+          placeholder="No category"
+          class="h-9 min-w-0 flex-[2]"
+        />
         <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="h-9 min-w-[80px] flex-1" />
         <Select bind:value={item.period} class="h-9 min-w-[100px] flex-1">
           <option value="monthly">/ mo</option>
@@ -224,15 +222,12 @@
 
     {#each expenseItems as item (item.key)}
       <div class="flex items-center gap-2">
-        <Select bind:value={item.selectValue} class="h-9 min-w-0 flex-[2]">
-          <option value="">No category</option>
-          {#each expenseCategories as cat (cat.id)}
-            <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-            {#each cat.subCategories as sub (sub.id)}
-              <option value={sub.id}>{sub.name}</option>
-            {/each}
-          {/each}
-        </Select>
+        <CategorySelect
+          categories={expenseCategories}
+          bind:value={item.selectValue}
+          placeholder="No category"
+          class="h-9 min-w-0 flex-[2]"
+        />
         <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="h-9 min-w-[80px] flex-1" />
         <Select bind:value={item.period} class="h-9 min-w-[100px] flex-1">
           <option value="monthly">/ mo</option>
