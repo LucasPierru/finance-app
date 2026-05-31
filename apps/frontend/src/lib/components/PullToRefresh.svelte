@@ -13,12 +13,14 @@
 
   let { onRefresh, disabled = false, children }: Props = $props();
 
-  // pullY (visual px) needed to trigger
+  // visual px of gap needed to trigger
   const THRESHOLD = 68;
-  // maximum visual pull distance
+  // max visual gap
   const MAX_PULL = 92;
-  // height the gap locks at while the request is in-flight
+  // gap height locked while request is in-flight
   const LOCK_HEIGHT = 56;
+  // finger must travel this many px downward before any visual effect
+  const DEAD_ZONE = 18;
 
   let rootEl: HTMLDivElement;
   let scrollEl: HTMLElement;
@@ -29,6 +31,8 @@
 
   let touchStartY = 0;
   let active = false;
+  // null = first move not yet seen; true/false = first move was downward/upward
+  let firstMoveDown: boolean | null = null;
 
   function findScrollParent(el: HTMLElement): HTMLElement {
     let node: HTMLElement | null = el.parentElement;
@@ -45,6 +49,7 @@
     if ((scrollEl?.scrollTop ?? 0) > 0) return;
     touchStartY = e.touches[0].clientY;
     active = true;
+    firstMoveDown = null;
   }
 
   function onTouchMove(e: TouchEvent) {
@@ -57,20 +62,35 @@
     }
 
     const dy = e.touches[0].clientY - touchStartY;
+
+    // Lock direction on first movement. Scrolling up = finger swipes up = dy < 0.
+    // Pulling down = finger swipes down = dy > 0. Cancel if scroll gesture.
+    if (firstMoveDown === null) {
+      firstMoveDown = dy > 0;
+      if (!firstMoveDown) {
+        active = false;
+        return;
+      }
+    }
+
     if (dy <= 0) {
       if (pulling) { pulling = false; pullY = 0; }
       return;
     }
 
+    // Dead zone: no visual effect until finger has intentionally moved far enough
+    if (dy < DEAD_ZONE) return;
+
     e.preventDefault();
     pulling = true;
-    // sqrt gives rubber-band deceleration: fast at first, slows past threshold
-    pullY = Math.min(MAX_PULL, Math.pow(dy, 0.75) * 2.2);
+    // Rubber-band past the dead zone: fast start, decelerates toward MAX_PULL
+    pullY = Math.min(MAX_PULL, Math.pow(dy - DEAD_ZONE, 0.78) * 2.4);
   }
 
   async function onTouchEnd() {
     if (!active) return;
     active = false;
+    firstMoveDown = null;
     if (!pulling) return;
     pulling = false;
 

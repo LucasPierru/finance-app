@@ -1,8 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import Pagination from "$lib/components/Pagination.svelte";
   import { formatCurrency } from "$lib/utils/format";
 
   export interface DisplayTransaction {
@@ -49,22 +49,6 @@
     const start = (page - 1) * pageSize;
     return items.slice(start, start + pageSize);
   });
-
-  function nextPage() {
-    if (isServerPaged) {
-      if ((serverPage ?? 1) < (serverTotalPages ?? 1)) onPageChange?.((serverPage ?? 1) + 1);
-    } else {
-      if (page < totalPages) page += 1;
-    }
-  }
-
-  function previousPage() {
-    if (isServerPaged) {
-      if ((serverPage ?? 1) > 1) onPageChange?.((serverPage ?? 1) - 1);
-    } else {
-      if (page > 1) page -= 1;
-    }
-  }
 
   $effect(() => {
     items;
@@ -113,12 +97,13 @@
       {/each}
     {/if}
 
-    {#if !hidePager && totalPages > 1}
-      <div class="flex items-center justify-between pt-2">
-        <Button variant="outline" class="h-9" onclick={previousPage} disabled={activePage <= 1}>Previous</Button>
-        <p class="text-xs text-slate-500">Page {activePage} / {totalPages}</p>
-        <Button variant="outline" class="h-9" onclick={nextPage} disabled={activePage >= totalPages}>Next</Button>
-      </div>
+    {#if !hidePager}
+      <Pagination
+        currentPage={activePage}
+        {totalPages}
+        onchange={isServerPaged ? onPageChange : (p) => (page = p)}
+        class="border-0 px-0 pt-2"
+      />
     {/if}
   </CardContent>
 </Card>

@@ -18,6 +18,7 @@
   import { httpPostManualTransaction, httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
   import { createTransactionRequest, get } from "$lib/stores/ui";
+  import Pagination from "$lib/components/Pagination.svelte";
 
   type Mode = "transactions" | "recurring";
 
@@ -612,23 +613,11 @@
           {/if}
         </div>
 
-        {#if serverTotalPages > 1}
-          <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={() => onPageChange?.(serverPage - 1)}
-              disabled={serverPage <= 1}>Previous</Button
-            >
-            <p class="text-xs text-slate-500">Page {serverPage} / {serverTotalPages}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={() => onPageChange?.(serverPage + 1)}
-              disabled={serverPage >= serverTotalPages}>Next</Button
-            >
-          </div>
-        {/if}
+        <Pagination
+          currentPage={serverPage}
+          totalPages={serverTotalPages}
+          onchange={(p) => onPageChange?.(p)}
+        />
       {/if}
     {:else if !connected}
       <p class="px-5 py-8 text-center text-sm text-slate-500">No bank connected yet.</p>
@@ -693,23 +682,11 @@
         </Table>
       </div>
 
-      {#if recurringTotalPages > 1}
-        <div class="flex items-center justify-between border-t border-[#252a3a] px-5 py-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (recurringPage = Math.max(1, recurringPage - 1))}
-            disabled={recurringPage <= 1}>Previous</Button
-          >
-          <p class="text-xs text-slate-500">Page {recurringPage} / {recurringTotalPages}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (recurringPage = Math.min(recurringTotalPages, recurringPage + 1))}
-            disabled={recurringPage >= recurringTotalPages}>Next</Button
-          >
-        </div>
-      {/if}
+      <Pagination
+        currentPage={recurringPage}
+        totalPages={recurringTotalPages}
+        onchange={(p) => (recurringPage = p)}
+      />
     {/if}
   </CardContent>
 </Card>

@@ -8,6 +8,7 @@
   import Pagination from "$lib/components/Pagination.svelte";
   import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
+  import SegmentedControl from "$lib/components/SegmentedControl.svelte";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
@@ -123,8 +124,20 @@
 </script>
 
 <div class="animate-fade-up grid grid-cols-1 gap-4 md:grid-cols-5 md:gap-6">
-  <!-- Month Navigation: hidden on mobile overview tab, full-width otherwise -->
-  <div class="{activeTab === 'overview' ? 'hidden md:block' : ''} col-span-1 md:col-span-5">
+  <!-- Tab switcher: mobile only, inline (not sticky) -->
+  <div class="col-span-1 md:hidden">
+    <SegmentedControl
+      items={[
+        { id: "overview", label: "Overview", href: "/?tab=overview" },
+        { id: "expenses", label: "Expenses", href: "/?tab=expenses" },
+        { id: "transactions", label: "Transactions", href: "/?tab=transactions" },
+      ]}
+      active={activeTab}
+    />
+  </div>
+
+  <!-- Month Navigation: full-width across all tabs -->
+  <div class="col-span-1 md:col-span-5">
     <MonthNavigation />
   </div>
 

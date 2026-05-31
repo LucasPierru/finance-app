@@ -41,26 +41,6 @@
   }
 </script>
 
-<nav
-  class="fixed inset-x-0 bottom-0 z-[55] border-t border-wf-border bg-wf-sidebar px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
-  aria-label="Mobile navigation"
->
-  <div class="grid grid-cols-5 gap-1">
-    {#each navItems as item}
-      <a
-        href={item.path}
-        class="flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors
-        {(item.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.path))
-          ? 'bg-wf-surface2 text-wf-text border border-wf-border'
-          : 'text-wf-muted1 hover:bg-wf-surface2 hover:text-wf-text'}"
-      >
-        <item.icon class="h-4 w-4" />
-        <span>{item.label}</span>
-      </a>
-    {/each}
-  </div>
-</nav>
-
 <aside
   class="hidden md:sticky md:top-0 md:flex md:h-screen md:w-72 md:shrink-0 md:flex-col md:bg-wf-sidebar md:[box-shadow:1px_0_0_0_var(--wf-border)]"
 >

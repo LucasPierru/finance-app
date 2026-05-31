@@ -32,6 +32,7 @@
   import FinanceListCard from "$lib/components/FinanceListCard.svelte";
   import BankEntriesPanel from "$lib/components/transactions/BankEntriesPanel.svelte";
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
+  import SegmentedControl from "$lib/components/SegmentedControl.svelte";
   import { hydrateFinanceState } from "$lib/stores/finance";
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
   import { httpPostPlaidSync } from "$lib/requests/plaid";
@@ -182,6 +183,18 @@
 </script>
 
 <div class="animate-fade-up">
+  {#if bankState.connected}
+    <div class="mb-4 md:hidden">
+      <SegmentedControl
+        items={[
+          { id: "transactions", label: "Transactions", href: `?view=transactions` },
+          { id: "recurring", label: "Recurring", href: `?view=recurring` },
+        ]}
+        active={viewMode}
+      />
+    </div>
+  {/if}
+
   <MonthNavigation value={filters.month} onchange={handleMonthChange} />
 
   <div class="grid grid-cols-2 gap-3 mt-4 mb-5">

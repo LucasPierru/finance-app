@@ -21,12 +21,12 @@ export function spentForItem(item: BudgetPlanItem, costs: FinanceItem[]): number
 export function itemProgress(
   item: BudgetPlanItem,
   costs: FinanceItem[],
-): { spent: number; monthly: number; pct: number; over: boolean } {
+): { spent: number; monthly: number; pct: number; over: boolean; remaining: number } {
   const monthly = toMonthly(item.amount, item.period as Period);
   const spent = spentForItem(item, costs);
   const raw = monthly > 0 ? (spent / monthly) * 100 : 0;
   const pct = Math.min(raw, 100);
-  return { spent, monthly, pct, over: spent > monthly };
+  return { spent, monthly, pct, over: spent > monthly, remaining: monthly - spent };
 }
 
 const SPENT_OK = "hsl(142 71% 45% / 0.85)";

@@ -67,6 +67,11 @@
     --wf-muted-3: hsl(217 22% 52%);
     --wf-accent: hsl(var(--primary));
     --wf-accent-hover: hsl(var(--accent));
+
+    --glass-border: rgba(255, 255, 255, 0.22);
+    --glass-specular: rgba(255, 255, 255, 0.6);
+    --glass-pill-bg: rgba(255, 255, 255, 0.18);
+    --glass-pill-border: rgba(255, 255, 255, 0.28);
   }
 
   html[data-theme="light"] {
@@ -108,6 +113,11 @@
     --wf-muted-3: hsl(215 20% 58%);
     --wf-accent: hsl(var(--primary));
     --wf-accent-hover: hsl(var(--accent));
+
+    --glass-border: rgba(0, 0, 0, 0.12);
+    --glass-specular: transparent;
+    --glass-pill-bg: rgba(0, 0, 0, 0.06);
+    --glass-pill-border: rgba(0, 0, 0, 0.1);
   }
 
   html[data-theme="ocean"] {
@@ -360,6 +370,34 @@
   }
   .font-display {
     font-family: "Bricolage Grotesque", sans-serif;
+  }
+
+  /* Liquid glass surface — apply to any floating/pill container */
+  .glass {
+    position: relative;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.05);
+    backdrop-filter: blur(8px) saturate(200%) brightness(1.05);
+  }
+  /* Specular rim highlight at the top edge */
+  .glass::before {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: 0;
+    height: 1px;
+    border-radius: 9999px;
+    background: linear-gradient(to right, transparent, var(--glass-specular), transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Active indicator pill inside a glass container */
+  .glass-pill {
+    background: var(--glass-pill-bg);
+    border: 1px solid var(--glass-pill-border);
+    box-shadow: inset 0 1px 0 var(--glass-specular);
   }
 
   /* Semantic theme-aware utilities — use these for any element that needs

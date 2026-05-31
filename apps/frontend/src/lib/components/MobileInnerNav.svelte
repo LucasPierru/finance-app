@@ -17,34 +17,44 @@
 
   const cappedItems = $derived(items.slice(0, 3));
   const activeIndex = $derived(
-    Math.max(
-      0,
-      cappedItems.findIndex((item) => item.id === active),
-    ),
+    Math.max(0, cappedItems.findIndex((item) => item.id === active))
   );
-  const pillWidth = $derived(100 / cappedItems.length);
+
+  let itemRefs: (HTMLElement | null)[] = $state(Array(3).fill(null));
+  let pillLeft = $state(0);
+  let pillWidth = $state(0);
+
+  $effect(() => {
+    const el = itemRefs[activeIndex];
+    if (!el) return;
+    pillLeft = el.offsetLeft;
+    pillWidth = el.offsetWidth;
+  });
 </script>
 
 <nav
-  class="sticky top-0 z-30 border-b border-wf-border bg-wf-sidebar px-3 py-2 backdrop-blur-md md:hidden"
+  class="sticky top-0 z-30 px-4 py-2 md:hidden"
   aria-label="Page navigation"
 >
-  <div class="relative">
+  <div class="glass relative rounded-xl px-1">
     <!-- sliding pill -->
-    <span
-      class="pointer-events-none absolute inset-y-0 rounded-md bg-wf-surface2 transition-transform duration-300 ease-[cubic-bezier(0.35,0,0.25,1)]"
-      style="width: {pillWidth}%; transform: translateX({activeIndex * 100}%);"
-      aria-hidden="true"
-    ></span>
+    {#if pillWidth > 0}
+      <span
+        class="pointer-events-none absolute top-1 z-[2] rounded-lg bg-white/15 border border-white/25
+               shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+        style="left: {pillLeft}px; width: {pillWidth}px; height: calc(100% - 0.5rem);
+               transition: left 280ms cubic-bezier(0.16,1,0.3,1), width 180ms cubic-bezier(0.16,1,0.3,1);"
+        aria-hidden="true"
+      ></span>
+    {/if}
 
     <div class="relative grid" style="grid-template-columns: repeat({cappedItems.length}, minmax(0, 1fr));">
-      {#each cappedItems as item (item.id)}
+      {#each cappedItems as item, i (item.id)}
         <a
+          bind:this={itemRefs[i]}
           href={item.href}
-          class="flex h-11 items-center justify-center px-3 text-sm font-semibold transition-colors duration-200 {active ===
-          item.id
-            ? 'text-wf-text'
-            : 'text-wf-muted1'}"
+          class="relative z-10 flex h-10 items-center justify-center px-3 text-sm font-semibold transition-colors duration-200
+                 {active === item.id ? 'text-wf-text' : 'text-wf-muted1'}"
         >
           {item.label}
         </a>
