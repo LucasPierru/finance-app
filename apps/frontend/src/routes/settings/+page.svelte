@@ -18,7 +18,7 @@
   import { LoaderCircle } from "lucide-svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
 
   const defaultSettings = {
@@ -67,11 +67,6 @@
   ];
 
   let selectedPlaidCountry = $state("US");
-
-  function handleThemeChange(event: Event) {
-    const target = event.target as HTMLSelectElement;
-    setTheme(target.value as ThemeName);
-  }
 
   function fmtCurrency(value: number | null, currencyCode: string | null): string {
     if (value === null) return "-";
@@ -163,9 +158,8 @@
     }
   });
 
-  function handlePlaidCountryChange(event: Event) {
-    const target = event.target as HTMLSelectElement;
-    selectedPlaidCountry = target.value;
+  function handlePlaidCountryChange(v: string) {
+    selectedPlaidCountry = v;
     localStorage.setItem("plaid_country", selectedPlaidCountry);
   }
 </script>
@@ -177,12 +171,19 @@
       <CardDescription>Pick a visual style for the entire app UI.</CardDescription>
     </CardHeader>
     <CardContent>
-      <Label for="theme-select" class="mb-2 block">Active Theme</Label>
-      <Select id="theme-select" class="w-full md:max-w-sm" value={$theme} onchange={handleThemeChange}>
-        {#each themeOptions as option}
-          <option value={option.value}>{option.label}</option>
-        {/each}
-      </Select>
+      <Label class="mb-2 block">Active Theme</Label>
+      <div class="w-full md:max-w-sm h-10">
+        <Select type="single" value={$theme} onValueChange={(v) => setTheme(v as ThemeName)}>
+          <SelectTrigger class="w-full h-full">
+            {themeOptions.find((o) => o.value === $theme)?.label ?? $theme}
+          </SelectTrigger>
+          <SelectContent>
+            {#each themeOptions as option}
+              <SelectItem value={option.value} label={option.label} />
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
       <p class="mt-2 text-sm text-slate-500">
         {themeOptions.find((option) => option.value === $theme)?.description}
       </p>
@@ -283,17 +284,19 @@
     </CardHeader>
     <CardContent>
       <div class="mb-4">
-        <Label for="plaid-country-select" class="mb-2 block">Bank Country</Label>
-        <Select
-          id="plaid-country-select"
-          class="w-full md:max-w-sm"
-          value={selectedPlaidCountry}
-          onchange={handlePlaidCountryChange}
-        >
-          {#each plaidCountryOptions as option}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </Select>
+        <Label class="mb-2 block">Bank Country</Label>
+        <div class="w-full md:max-w-sm h-10">
+          <Select type="single" value={selectedPlaidCountry} onValueChange={handlePlaidCountryChange}>
+            <SelectTrigger class="w-full h-full">
+              {plaidCountryOptions.find((o) => o.value === selectedPlaidCountry)?.label ?? selectedPlaidCountry}
+            </SelectTrigger>
+            <SelectContent>
+              {#each plaidCountryOptions as option}
+                <SelectItem value={option.value} label={option.label} />
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
         <p class="mt-2 text-sm text-slate-500">This country is used when opening Plaid Link.</p>
       </div>
 

@@ -3,7 +3,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { httpPostBudgetPlan, httpPutBudgetPlan } from "$lib/requests/budget";
   import { untrack } from "svelte";
   import { Plus, Trash2 } from "lucide-svelte";
@@ -26,12 +26,18 @@
   let {
     categories,
     editPlan = undefined,
+    hideActions = false,
+    submitFn = $bindable<(() => Promise<void>) | undefined>(undefined),
+    isSubmitting = $bindable(false),
     oncreated,
     onupdated,
     oncancel,
   }: {
     categories: FinanceCategory[];
     editPlan?: BudgetPlan;
+    hideActions?: boolean;
+    submitFn?: (() => Promise<void>) | undefined;
+    isSubmitting?: boolean;
     oncreated?: (plan: BudgetPlan) => void;
     onupdated?: (plan: BudgetPlan) => void;
     oncancel?: () => void;
@@ -82,6 +88,11 @@
   );
   let error = $state<string | null>(null);
   let submitting = $state(false);
+
+  $effect(() => {
+    submitFn = handleSubmit;
+    isSubmitting = submitting;
+  });
 
   const incomeItems = $derived(items.filter((i) => i.flow === "income"));
   const expenseItems = $derived(items.filter((i) => i.flow === "expense"));
@@ -162,7 +173,7 @@
   <!-- Budget name -->
   <div class="space-y-1.5">
     <label for="plan-name" class="text-sm font-medium text-slate-300">Budget name</label>
-    <Input id="plan-name" bind:value={planName} placeholder="e.g. Monthly Budget" class="h-10" />
+    <Input id="plan-name" bind:value={planName} placeholder="e.g. Monthly Budget" />
   </div>
 
   <!-- Income items -->
@@ -173,29 +184,38 @@
     </div>
 
     {#each incomeItems as item (item.key)}
-      <div class="flex items-center gap-2">
+      <div class="rounded-lg border border-[#252a3a] p-2.5 space-y-2 md:border-0 md:p-0 md:space-y-0 md:flex md:items-center md:gap-2">
         <CategorySelect
           categories={incomeCategories}
           bind:value={item.selectValue}
           placeholder="No category"
-          class="h-9 min-w-0 flex-[2]"
+          class="w-full md:flex-[2] md:min-w-0"
         />
-        <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="h-9 min-w-[80px] flex-1" />
-        <Select bind:value={item.period} class="h-9 min-w-[100px] flex-1">
-          <option value="monthly">/ mo</option>
-          <option value="biweekly">/ 2wk</option>
-          <option value="weekly">/ wk</option>
-          <option value="yearly">/ yr</option>
-        </Select>
-        <Button
-          onclick={() => removeItem(item.key)}
-          variant="ghost"
-          size="icon-sm"
-          class="shrink-0 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40"
-          aria-label="Remove item"
-        >
-          <Trash2 class="h-3.5 w-3.5" />
-        </Button>
+        <div class="flex items-center gap-2">
+          <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="flex-1 min-w-0 md:min-w-[80px] md:flex-1" />
+          <div class="w-28 shrink-0 md:w-20 md:shrink-0">
+            <Select type="single" bind:value={item.period}>
+              <SelectTrigger class="w-full h-full">
+                {{ monthly: "/ mo", biweekly: "/ 2wk", weekly: "/ wk", yearly: "/ yr" }[item.period]}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly" label="/ mo" />
+                <SelectItem value="biweekly" label="/ 2wk" />
+                <SelectItem value="weekly" label="/ wk" />
+                <SelectItem value="yearly" label="/ yr" />
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onclick={() => removeItem(item.key)}
+            variant="ghost"
+            size="icon-sm"
+            class="shrink-0 text-rose-500 hover:text-rose-300 hover:bg-rose-950/40"
+            aria-label="Remove item"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     {/each}
 
@@ -221,29 +241,38 @@
     </div>
 
     {#each expenseItems as item (item.key)}
-      <div class="flex items-center gap-2">
+      <div class="rounded-lg border border-[#252a3a] p-2.5 space-y-2 md:border-0 md:p-0 md:space-y-0 md:flex md:items-center md:gap-2">
         <CategorySelect
           categories={expenseCategories}
           bind:value={item.selectValue}
           placeholder="No category"
-          class="h-9 min-w-0 flex-[2]"
+          class="w-full md:flex-[2] md:min-w-0"
         />
-        <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="h-9 min-w-[80px] flex-1" />
-        <Select bind:value={item.period} class="h-9 min-w-[100px] flex-1">
-          <option value="monthly">/ mo</option>
-          <option value="biweekly">/ 2wk</option>
-          <option value="weekly">/ wk</option>
-          <option value="yearly">/ yr</option>
-        </Select>
-        <Button
-          onclick={() => removeItem(item.key)}
-          variant="ghost"
-          size="icon-sm"
-          class="shrink-0 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40"
-          aria-label="Remove item"
-        >
-          <Trash2 class="h-3.5 w-3.5" />
-        </Button>
+        <div class="flex items-center gap-2">
+          <Input bind:value={item.amount} type="number" min="0" placeholder="Amount" class="flex-1 min-w-0 md:min-w-[80px] md:flex-1" />
+          <div class="w-28 shrink-0 md:w-20 md:shrink-0">
+            <Select type="single" bind:value={item.period}>
+              <SelectTrigger class="w-full h-full">
+                {{ monthly: "/ mo", biweekly: "/ 2wk", weekly: "/ wk", yearly: "/ yr" }[item.period]}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly" label="/ mo" />
+                <SelectItem value="biweekly" label="/ 2wk" />
+                <SelectItem value="weekly" label="/ wk" />
+                <SelectItem value="yearly" label="/ yr" />
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onclick={() => removeItem(item.key)}
+            variant="ghost"
+            size="icon-sm"
+            class="shrink-0 text-rose-500 hover:text-rose-300 hover:bg-rose-950/40"
+            aria-label="Remove item"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     {/each}
 
@@ -272,16 +301,18 @@
     <p class="text-sm text-rose-400">{error}</p>
   {/if}
 
-  <div class="flex gap-3 pt-1">
-    <Button onclick={handleSubmit} disabled={submitting} class="h-10 flex-1">
-      {#if submitting}
-        {isEditing ? "Saving…" : "Creating…"}
-      {:else}
-        {isEditing ? "Save changes" : "Create budget"}
+  {#if !hideActions}
+    <div class="flex gap-3 pt-1">
+      <Button onclick={handleSubmit} disabled={submitting} class="h-10 flex-1">
+        {#if submitting}
+          {isEditing ? "Saving…" : "Creating…"}
+        {:else}
+          {isEditing ? "Save changes" : "Create budget"}
+        {/if}
+      </Button>
+      {#if oncancel}
+        <Button onclick={oncancel} variant="outline" class="h-10 px-5">Cancel</Button>
       {/if}
-    </Button>
-    {#if oncancel}
-      <Button onclick={oncancel} variant="outline" class="h-10 px-5">Cancel</Button>
-    {/if}
-  </div>
+    </div>
+  {/if}
 </div>

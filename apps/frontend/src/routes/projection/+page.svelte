@@ -13,7 +13,7 @@
   import { theme } from "$lib/stores/theme";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { cssHsl } from "$lib/utils/chart";
   import { formatCurrency } from "$lib/utils/format";
   import { toMonthly } from "$lib/utils/budget";
@@ -259,12 +259,22 @@
   {#if budgetPlans.length > 0}
     <div class="mb-5 flex items-center gap-3 rounded-xl border border-[#252a3a] bg-[#13161e] px-4 py-3">
       <span class="text-sm text-slate-400 shrink-0">Income source</span>
-      <Select bind:value={selectedPlanId} class="h-9 max-w-xs text-sm">
-        <option value="">Finance data (automatic)</option>
-        {#each budgetPlans as plan (plan.id)}
-          <option value={plan.id}>{plan.isFavorite ? "★ " : ""}{plan.name}</option>
-        {/each}
-      </Select>
+      <div class="h-9 max-w-xs">
+        <Select type="single" bind:value={selectedPlanId}>
+          <SelectTrigger class="w-full h-full text-sm">
+            {selectedPlanId === ""
+              ? "Finance data (automatic)"
+              : (budgetPlans.find((p) => p.id === selectedPlanId)?.isFavorite ? "★ " : "") +
+                (budgetPlans.find((p) => p.id === selectedPlanId)?.name ?? "")}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="" label="Finance data (automatic)" />
+            {#each budgetPlans as plan (plan.id)}
+              <SelectItem value={plan.id} label="{plan.isFavorite ? '★ ' : ''}{plan.name}" />
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
       {#if selectedPlan}
         <span class="text-xs text-slate-500">
           {formatCurrency(budgetMonthlyIncome)}/mo income · {formatCurrency(budgetMonthlyExpenses)}/mo expenses

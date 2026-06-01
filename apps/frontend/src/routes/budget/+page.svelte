@@ -111,6 +111,8 @@
   // Edit modal state (desktop only)
   let showModal = $state(false);
   let editingPlan = $state<BudgetPlan | null>(null);
+  let modalSubmitFn = $state<(() => Promise<void>) | undefined>(undefined);
+  let modalSubmitting = $state(false);
 
   // Delete confirmation modal
   let deleteModalOpen = $state(false);
@@ -409,25 +411,39 @@
 
 <!-- Desktop edit modal (portaled via bits-ui Dialog so transforms don't clip it) -->
 <Dialog.Root bind:open={showModal} onOpenChange={(v) => { if (!v) editingPlan = null; }}>
-  <Dialog.Content class="max-w-lg" showCloseButton={false}>
-    <div class="flex items-center justify-between border-b border-[#252a3a] pb-4 mb-5">
-      <h2 class="font-semibold text-slate-100">
-        {editingPlan ? "Edit budget" : "New budget"}
-      </h2>
+  <Dialog.Content class="max-w-2xl flex flex-col max-h-[85vh] p-0" showCloseButton={false}>
+    <Dialog.Header class="flex-row items-center justify-between border-b border-[#252a3a] px-6 py-4 shrink-0">
+      <Dialog.Title>{editingPlan ? "Edit budget" : "New budget"}</Dialog.Title>
       <Dialog.Close class="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100">
         <X class="h-4 w-4" />
         <span class="sr-only">Close</span>
       </Dialog.Close>
+    </Dialog.Header>
+    <div class="overflow-y-auto flex-1 px-6 py-5">
+      {#if editingPlan}
+        <BudgetPlanForm
+          categories={allCategories}
+          editPlan={editingPlan}
+          hideActions
+          bind:submitFn={modalSubmitFn}
+          bind:isSubmitting={modalSubmitting}
+          onupdated={handlePlanUpdated}
+        />
+      {:else}
+        <BudgetPlanForm
+          categories={allCategories}
+          hideActions
+          bind:submitFn={modalSubmitFn}
+          bind:isSubmitting={modalSubmitting}
+          oncreated={handlePlanCreated}
+        />
+      {/if}
     </div>
-    {#if editingPlan}
-      <BudgetPlanForm
-        categories={allCategories}
-        editPlan={editingPlan}
-        onupdated={handlePlanUpdated}
-        oncancel={closeModal}
-      />
-    {:else}
-      <BudgetPlanForm categories={allCategories} oncreated={handlePlanCreated} oncancel={closeModal} />
-    {/if}
+    <Dialog.Footer class="border-t border-[#252a3a] px-6 py-4 shrink-0">
+      <Button variant="outline" onclick={closeModal}>Cancel</Button>
+      <Button onclick={() => modalSubmitFn?.()} disabled={modalSubmitting}>
+        {modalSubmitting ? (editingPlan ? "Saving…" : "Creating…") : (editingPlan ? "Save changes" : "Create budget")}
+      </Button>
+    </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

@@ -7,7 +7,7 @@
   import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { SlidersHorizontal, Pencil, Trash2, LoaderCircle, ArrowUpDown, ArrowUp, ArrowDown, Calendar as CalendarIcon } from "lucide-svelte";
   import CategorySelect from "$lib/components/CategorySelect.svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -715,10 +715,17 @@
       </div>
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Type</Label>
-        <Select class="h-9" bind:value={createFlow} onchange={() => { createCategoryId = ""; createSubCategoryId = ""; createSelectedValue = ""; }}>
-          <option value="expense">Expense</option>
-          <option value="income">Income</option>
-        </Select>
+        <div class="h-9">
+          <Select type="single" bind:value={createFlow} onValueChange={() => { createCategoryId = ""; createSubCategoryId = ""; createSelectedValue = ""; }}>
+            <SelectTrigger class="w-full h-full">
+              {createFlow === "expense" ? "Expense" : "Income"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="expense" label="Expense" />
+              <SelectItem value="income" label="Income" />
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
     <div class="flex flex-col gap-1.5">
@@ -751,31 +758,52 @@
     <div class="grid grid-cols-2 gap-3">
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Type</Label>
-        <Select class="h-9" bind:value={draftFlow}>
-          <option value="">All</option>
-          <option value="income">Income</option>
-          <option value="expense">Expense</option>
-        </Select>
+        <div class="h-9">
+          <Select type="single" bind:value={draftFlow}>
+            <SelectTrigger class="w-full h-full">
+              {{ "": "All", income: "Income", expense: "Expense" }[draftFlow] ?? "All"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="" label="All" />
+              <SelectItem value="income" label="Income" />
+              <SelectItem value="expense" label="Expense" />
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Category</Label>
-        <Select class="h-9" bind:value={draftCategoryId} onchange={() => (draftSubCategoryId = "")}>
-          <option value="">All</option>
-          {#each categories as cat (cat.id)}
-            <option value={cat.id}>{cat.name}</option>
-          {/each}
-        </Select>
+        <div class="h-9">
+          <Select type="single" bind:value={draftCategoryId} onValueChange={() => (draftSubCategoryId = "")}>
+            <SelectTrigger class="w-full h-full">
+              {draftCategoryId ? (categories.find((c) => c.id === draftCategoryId)?.name ?? "All") : "All"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="" label="All" />
+              {#each categories as cat (cat.id)}
+                <SelectItem value={cat.id} label={cat.name} />
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
     {#if draftSubCategoryOptions.length > 0}
       <div class="flex flex-col gap-1.5">
         <Label class="text-sm text-slate-400">Sub-category</Label>
-        <Select class="h-9" bind:value={draftSubCategoryId}>
-          <option value="">All</option>
-          {#each draftSubCategoryOptions as sub (sub.id)}
-            <option value={sub.id}>{sub.name}</option>
-          {/each}
-        </Select>
+        <div class="h-9">
+          <Select type="single" bind:value={draftSubCategoryId}>
+            <SelectTrigger class="w-full h-full">
+              {draftSubCategoryId ? (draftSubCategoryOptions.find((s) => s.id === draftSubCategoryId)?.name ?? "All") : "All"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="" label="All" />
+              {#each draftSubCategoryOptions as sub (sub.id)}
+                <SelectItem value={sub.id} label={sub.name} />
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     {/if}
     <div class="grid grid-cols-2 gap-3">
@@ -795,10 +823,17 @@
   <div class="space-y-4">
     <div class="flex flex-col gap-1.5">
       <Label class="text-sm text-slate-400">Type</Label>
-      <Select class="h-10" bind:value={editFlow} onchange={() => { editCategoryId = ""; editSubCategoryId = ""; editSelectedValue = ""; }}>
-        <option value="expense">Expense</option>
-        <option value="income">Income</option>
-      </Select>
+      <div class="h-10">
+        <Select type="single" bind:value={editFlow} onValueChange={() => { editCategoryId = ""; editSubCategoryId = ""; editSelectedValue = ""; }}>
+          <SelectTrigger class="w-full h-full">
+            {editFlow === "expense" ? "Expense" : "Income"}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="expense" label="Expense" />
+            <SelectItem value="income" label="Income" />
+          </SelectContent>
+        </Select>
+      </div>
     </div>
     <div class="flex flex-col gap-1.5">
       <Label class="text-sm text-slate-400">Category</Label>

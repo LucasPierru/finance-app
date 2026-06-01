@@ -17,7 +17,7 @@
   import { Button } from "$lib/components/ui/button";
   import { formatCurrency } from "$lib/utils/format";
   import { Input } from "$lib/components/ui/input";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
 
   type Variant = "income" | "expense";
 
@@ -110,19 +110,33 @@
           <div class="w-full grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
             <Input bind:value={editName} class="md:col-span-3 h-10" />
             <Input bind:value={editRawAmount} type="number" class="md:col-span-2 h-10" />
-            <Select bind:value={editFrequency} class="md:col-span-2 h-10">
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
-              {#if variant === "income"}
-                <option value="biweekly">Every 2 weeks</option>
-              {/if}
-              <option value="yearly">Yearly</option>
-            </Select>
-            <Select bind:value={editCategory} class="md:col-span-2 h-10">
-              {#each categoryOptions as option}
-                <option value={option}>{option}</option>
-              {/each}
-            </Select>
+            <div class="md:col-span-2 h-10">
+              <Select type="single" bind:value={editFrequency}>
+                <SelectTrigger class="w-full h-full">
+                  {{ monthly: "Monthly", weekly: "Weekly", biweekly: "Every 2 weeks", yearly: "Yearly" }[editFrequency]}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly" label="Monthly" />
+                  <SelectItem value="weekly" label="Weekly" />
+                  {#if variant === "income"}
+                    <SelectItem value="biweekly" label="Every 2 weeks" />
+                  {/if}
+                  <SelectItem value="yearly" label="Yearly" />
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="md:col-span-2 h-10">
+              <Select type="single" bind:value={editCategory}>
+                <SelectTrigger class="w-full h-full">
+                  {editCategory || "Category"}
+                </SelectTrigger>
+                <SelectContent>
+                  {#each categoryOptions as option}
+                    <SelectItem value={option} label={option} />
+                  {/each}
+                </SelectContent>
+              </Select>
+            </div>
             <div class="md:col-span-3 flex items-center gap-2 md:justify-end">
               <Button size="sm" onclick={() => saveEditing(item.id)}>Save</Button>
               <Button size="sm" variant="ghost" onclick={cancelEditing}>Cancel</Button>

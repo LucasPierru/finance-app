@@ -40,10 +40,14 @@
       initializeTheme();
       await initializeAuth();
 
-      // Sync on initial load if bank is connected and data is stale
       const initial = page.data.initialBankState;
-      if (initial?.connected && shouldSync(initial.lastSyncAt)) {
-        void syncBankData();
+      if (initial?.connected) {
+        const sessionKey = "plaid_synced";
+        const syncedThisSession = sessionStorage.getItem(sessionKey) === "1";
+        if (!syncedThisSession || shouldSync(initial.lastSyncAt)) {
+          sessionStorage.setItem(sessionKey, "1");
+          void syncBankData();
+        }
       }
     })();
 

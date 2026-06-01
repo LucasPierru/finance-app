@@ -4,7 +4,7 @@
   import { api } from "$lib/requests/api";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import CategorySelect from "$lib/components/CategorySelect.svelte";
   import type { FinanceCategory } from "@finance-app/shared-types";
 
@@ -107,14 +107,21 @@
       onkeydown={(e) => e.key === "Enter" && handleSubmit()}
       class="h-11 flex-1 min-w-[100px]"
     />
-    <Select bind:value={frequency} class="h-11 flex-1 min-w-[110px]">
-      <option value="monthly">Monthly</option>
-      <option value="weekly">Weekly</option>
-      {#if copy.showBiweekly}
-        <option value="biweekly">Every 2 weeks</option>
-      {/if}
-      <option value="yearly">Yearly</option>
-    </Select>
+    <div class="h-11 flex-1 min-w-[110px]">
+      <Select type="single" bind:value={frequency}>
+        <SelectTrigger class="w-full h-full">
+          {{ monthly: "Monthly", weekly: "Weekly", biweekly: "Every 2 weeks", yearly: "Yearly" }[frequency]}
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="monthly" label="Monthly" />
+          <SelectItem value="weekly" label="Weekly" />
+          {#if copy.showBiweekly}
+            <SelectItem value="biweekly" label="Every 2 weeks" />
+          {/if}
+          <SelectItem value="yearly" label="Yearly" />
+        </SelectContent>
+      </Select>
+    </div>
     <CategorySelect
       categories={categoryOptions}
       bind:value={categoryId}

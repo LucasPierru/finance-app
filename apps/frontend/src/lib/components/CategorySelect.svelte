@@ -2,7 +2,13 @@
 
 <script lang="ts">
   import type { FinanceCategory } from "@finance-app/shared-types";
-  import { ChevronDown } from "lucide-svelte";
+  import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectSeparator,
+    SelectTrigger,
+  } from "$lib/components/ui/select";
 
   let {
     categories,
@@ -30,22 +36,25 @@
   });
 </script>
 
-<div class="relative {className}">
-  <select
+<div class={className}>
+  <Select
+    type="single"
     bind:value
-    onchange={() => onchange?.(value)}
-    class="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 bg-[#1c2030] text-slate-100"
+    onValueChange={(v) => onchange?.(v)}
   >
-    <option value="">{placeholder}</option>
-    {#each categories as cat (cat.id)}
-      <option value={cat.id} style="font-weight: 600">{cat.name}</option>
-      {#each cat.subCategories as sub (sub.id)}
-        <option value={sub.id}>&nbsp;&nbsp;&nbsp;&nbsp;{sub.name}</option>
+    <SelectTrigger class="w-full h-full text-left {!value ? 'text-muted-foreground' : ''}">
+      {displayLabel}
+    </SelectTrigger>
+    <SelectContent>
+      {#each categories as cat, i (cat.id)}
+        {#if i > 0}
+          <SelectSeparator />
+        {/if}
+        <SelectItem value={cat.id} label={cat.name} class="font-semibold" />
+        {#each cat.subCategories as sub (sub.id)}
+          <SelectItem value={sub.id} label={sub.name} class="pl-6" />
+        {/each}
       {/each}
-    {/each}
-  </select>
-  <div class="pointer-events-none flex h-full w-full items-center rounded-md border border-[#252a3a] bg-[#1c2030] px-3 py-2 text-sm">
-    <span class="flex-1 truncate {!value ? 'text-slate-500' : 'text-slate-100'}">{displayLabel}</span>
-    <ChevronDown class="h-4 w-4 shrink-0 text-slate-400" />
-  </div>
+    </SelectContent>
+  </Select>
 </div>

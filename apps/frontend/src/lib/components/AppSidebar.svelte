@@ -7,7 +7,7 @@
   import { authState, logout } from "$lib/stores/auth";
   import { Button } from "$lib/components/ui/button";
   import { Label } from "$lib/components/ui/label";
-  import { Select } from "$lib/components/ui/select";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { setTheme, theme, type ThemeName } from "$lib/stores/theme";
   import { formatCurrency } from "$lib/utils/format";
 
@@ -29,11 +29,6 @@
     { value: "sunset", label: "Sunset" },
     { value: "midnight", label: "Midnight" },
   ];
-
-  function handleThemeChange(event: Event) {
-    const target = event.target as HTMLSelectElement;
-    setTheme(target.value as ThemeName);
-  }
 
   async function handleLogout() {
     await logout();
@@ -69,11 +64,18 @@
   <div class="mt-auto p-4">
     <div class="mb-3 rounded-xl border border-wf-border bg-wf-surface p-4">
       <Label for="desktop-theme">Theme</Label>
-      <Select id="desktop-theme" class="mt-2" value={$theme} onchange={handleThemeChange}>
-        {#each themeOptions as option}
-          <option value={option.value}>{option.label}</option>
-        {/each}
-      </Select>
+      <div class="mt-2 h-10">
+        <Select type="single" value={$theme} onValueChange={(v) => setTheme(v as ThemeName)}>
+          <SelectTrigger class="w-full h-full">
+            {themeOptions.find((o) => o.value === $theme)?.label ?? $theme}
+          </SelectTrigger>
+          <SelectContent>
+            {#each themeOptions as option}
+              <SelectItem value={option.value} label={option.label} />
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
 
     <div class="rounded-xl border border-wf-border bg-wf-surface p-4">
