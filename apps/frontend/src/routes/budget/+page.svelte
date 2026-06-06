@@ -13,8 +13,8 @@
   import BudgetBarChart from "$lib/components/BudgetBarChart.svelte";
   import BudgetDonutChart from "$lib/components/BudgetDonutChart.svelte";
   import MonthNavigation from "$lib/components/home/MonthNavigation.svelte";
-  import type { BudgetPlan, FinanceCategory } from "@finance-app/shared-types";
-  import { toMonthly, periodLabel, itemProgress, type CostItem, type Period } from "$lib/utils/budget";
+  import type { BudgetPlan } from "@finance-app/shared-types";
+  import { periodLabel, itemProgress, buildCurrentMonthCosts, buildPlanHealth, type CostItem } from "$lib/utils/budget";
   import { formatCurrency } from "$lib/utils/format";
   import { getMonthKey } from "$lib/utils/date";
   import { Star, Pencil, Trash2, X } from "lucide-svelte";
@@ -26,40 +26,14 @@
   const currentMonthSummary = $derived(page.data.currentMonthSummary);
   const selectedMonth = $derived(page.data.month ?? getMonthKey(new Date()));
 
-  const currentMonthCosts = $derived.by<CostItem[]>(() => {
-    const breakdown = currentMonthSummary?.categoryBreakdown ?? [];
-    if (breakdown.length === 0) return financeView.costs;
-
-    // Category-level items
-    const catItems: CostItem[] = breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
-      const cat = allCategories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
-      return {
-        id: `month-cat-${i}`,
-        name: b.category,
-        category: b.category,
-        categoryId: cat?.id,
-        amount: b.totalAmount,
-        rawAmount: b.totalAmount.toFixed(2),
-        frequency: "monthly" as const,
-      };
-    });
-
-    // Subcategory-level items (for fine-grained budget matching)
-    const subItems: CostItem[] = (currentMonthSummary?.subCategoryBreakdown ?? []).map(
-      (s: { categoryId: string | null; subCategoryId: string; subCategoryName: string; totalAmount: number }, i: number) => ({
-        id: `month-sub-${i}`,
-        name: s.subCategoryName,
-        category: s.subCategoryName,
-        categoryId: s.categoryId ?? undefined,
-        subCategoryId: s.subCategoryId,
-        amount: s.totalAmount,
-        rawAmount: s.totalAmount.toFixed(2),
-        frequency: "monthly" as const,
-      }),
-    );
-
-    return [...catItems, ...subItems];
-  });
+  const currentMonthCosts = $derived<CostItem[]>(
+    buildCurrentMonthCosts(
+      currentMonthSummary?.categoryBreakdown ?? [],
+      currentMonthSummary?.subCategoryBreakdown ?? [],
+      allCategories,
+      financeView.costs,
+    ),
+  );
 
   let budgetPlans = $state<BudgetPlan[]>(page.data.budgetPlans ?? []);
 
@@ -89,24 +63,7 @@
     goto(`?${params}`, { replaceState: false, keepFocus: true });
   }
 
-  // Plan health summary for selected plan (expense items only)
-  const planHealth = $derived.by(() => {
-    if (!selectedPlan || selectedPlan.items.length === 0) return null;
-    const expenseItems = selectedPlan.items.filter((i) => (i.flow ?? "expense") === "expense");
-    if (expenseItems.length === 0) return null;
-    let totalBudget = 0;
-    let totalSpent = 0;
-    let overCount = 0;
-    for (const item of expenseItems) {
-      const { spent, monthly, over } = itemProgress(item, currentMonthCosts);
-      totalBudget += monthly;
-      totalSpent += spent;
-      if (over) overCount++;
-    }
-    const incomeItems = selectedPlan.items.filter((i) => i.flow === "income");
-    const budgetIncome = incomeItems.reduce((s, i) => s + toMonthly(i.amount, i.period as Period), 0);
-    return { totalBudget, totalSpent, overCount, budgetIncome };
-  });
+  const planHealth = $derived(selectedPlan ? buildPlanHealth(selectedPlan, currentMonthCosts) : null);
 
   // Edit modal state (desktop only)
   let showModal = $state(false);

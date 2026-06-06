@@ -18,7 +18,7 @@
     class: className = "",
   }: {
     labels: string[];
-    values: number[];
+    values: (number | null)[];
     previousValues?: number[];
     totalLabel: string;
     chartHeight?: number;
@@ -30,9 +30,9 @@
   let chart: ChartInstance | undefined;
   let mounted = $state(false);
 
-  function buildCumulativeValues(raw: number[]): number[] {
+  function buildCumulativeValues(raw: (number | null)[]): (number | null)[] {
     let running = 0;
-    return raw.map((v) => (running += Math.max(0, v)));
+    return raw.map((v) => (v === null ? null : (running += Math.max(0, v))));
   }
 
   const crosshairPlugin = {
@@ -63,10 +63,11 @@
     const safeValues = values.length > 0 ? buildCumulativeValues(values) : [0];
     const cumPrevious = previousValues.length > 0 ? buildCumulativeValues(previousValues) : [];
 
-    const datasets: ChartDataset<"line">[] = [
+    const datasets: ChartDataset<"line", (number | null)[]>[] = [
       {
         data: safeValues,
         fill: true,
+        spanGaps: false,
         cubicInterpolationMode: "monotone",
         borderColor: cssHsl("--chart-1"),
         borderWidth: 2,
@@ -114,6 +115,7 @@
             ticks: { color: cssHsl("--muted-foreground"), maxTicksLimit: 8 },
           },
           y: {
+            min: 0,
             grid: { color: cssHsl("--border", 0.5) },
             ticks: {
               color: cssHsl("--muted-foreground"),

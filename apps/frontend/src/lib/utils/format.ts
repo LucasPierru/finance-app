@@ -1,8 +1,10 @@
-/** Formats a number as a USD currency string with no decimal places, e.g. "$1,234". */
-export function formatCurrency(amount: number): string {
+/** Formats a currency amount. Without a currency code: USD, no decimals. With a code: dynamic currency, 2 decimals. Returns "-" on null. */
+export function formatCurrency(amount: number | null, currencyCode?: string | null): string {
+  if (amount === null) return "-";
+  const hasCurrencyCode = currencyCode != null;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
+    currency: currencyCode ?? "USD",
+    maximumFractionDigits: hasCurrencyCode ? 2 : 0,
   }).format(amount);
 }

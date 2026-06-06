@@ -35,6 +35,14 @@ export function formatMonthLabelFromKey(key: string): string {
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+/** Formats a datetime string (or null) to a locale string, e.g. for last-sync timestamps. Returns "Never" on null/invalid. */
+export function formatDate(value: string | null): string {
+  if (!value) return "Never";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Never";
+  return parsed.toLocaleString();
+}
+
 /** Formats a "YYYY-MM-DD" string to a short label, e.g. "Jan 5". */
 export function formatDateLabel(dateValue: string): string {
   const parsed = parseLocalCalendarDate(dateValue);

@@ -2,14 +2,10 @@
 
 <script module lang="ts">
   import type { PagedTransactionsResult, TransactionSummary } from "@finance-app/shared-types";
+  import { getMonthKey } from "$lib/utils/date";
 
   type CachedPage = { pagedTransactions: PagedTransactionsResult; txSummary: TransactionSummary };
   const txCache = new Map<string, CachedPage>();
-
-  function currentMonthKey(): string {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  }
 
   function makeCacheKey(f: {
     month: string; page: number; flow: string; search: string;
@@ -36,7 +32,7 @@
   import { hydrateFinanceState } from "$lib/stores/finance";
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
   import { httpPostPlaidSync } from "$lib/requests/plaid";
-  import type { BankConnectionState, PagedTransactionsResult, TransactionSummary } from "@finance-app/shared-types";
+  import type { BankConnectionState, BankTransaction, PagedTransactionsResult, TransactionSummary } from "@finance-app/shared-types";
   import {
     emptyBankState,
     emptyFinanceState,
@@ -76,13 +72,13 @@
     if (!serverTx || !serverSummary || !serverFilters) return;
     pagedTransactions = serverTx;
     txSummary = serverSummary;
-    if (serverFilters.month && serverFilters.month < currentMonthKey()) {
+    if (serverFilters.month && serverFilters.month < getMonthKey(new Date())) {
       txCache.set(makeCacheKey(serverFilters), { pagedTransactions: serverTx, txSummary: serverSummary });
     }
   });
 
   const categorizedPagedTransactions = $derived(
-    ((pagedTransactions?.transactions ?? []) as import("@finance-app/shared-types").BankTransaction[]).map((tx) =>
+    (pagedTransactions?.transactions ?? [] as BankTransaction[]).map((tx) =>
       categorizeBankTransaction(tx, allCategories),
     ),
   );
@@ -98,8 +94,8 @@
     }
     if (!("page" in patch)) params.set("page", "1");
 
-    const targetMonth = params.get("month") || currentMonthKey();
-    if (targetMonth < currentMonthKey()) {
+    const targetMonth = params.get("month") || getMonthKey(new Date());
+    if (targetMonth < getMonthKey(new Date())) {
       const key = makeCacheKey({
         month: targetMonth,
         page: Number(params.get("page") || 1),

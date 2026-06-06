@@ -12,14 +12,16 @@
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "$lib/components/ui/table";
   import { emptyBankState, emptyFinanceState, getEffectiveFinanceView } from "$lib/utils/finance-view";
-  import { getMonthKey, formatMonthLabelFromKey } from "$lib/utils/date";
+  import { getMonthKey, formatMonthLabelFromKey, getPreviousMonthKey } from "$lib/utils/date";
   import { formatCurrency } from "$lib/utils/format";
   import {
     buildSourceTransactions,
     groupTransactionsByMonth,
     buildDailyExpenseTrend,
+    buildMonthSummary,
     toDisplayTransaction,
   } from "$lib/utils/home-transactions";
+  import { buildCurrentMonthCosts, type CostItem } from "$lib/utils/budget";
 
   type HomeTab = "overview" | "expenses" | "transactions";
 
@@ -45,52 +47,19 @@
   const selectedMonthKey = $derived(page.data.txMonth || getMonthKey(new Date()));
   const selectedMonthItems = $derived(groupedByMonth.find((g) => g.key === selectedMonthKey)?.items ?? []);
   const selectedMonthLabel = $derived(formatMonthLabelFromKey(selectedMonthKey));
+  const previousMonthKey = $derived(getPreviousMonthKey(selectedMonthKey));
 
-  const selectedMonthSummary = $derived.by(() => {
-    const summary = page.data.currentMonthSummary;
-    const breakdown = summary?.categoryBreakdown as Array<{ category: string; totalAmount: number }> | undefined;
-
-    const expenseBreakdown =
-      breakdown && breakdown.length > 0
-        ? { labels: breakdown.map((e) => e.category), values: breakdown.map((e) => e.totalAmount), total: summary?.totalExpenses ?? 0 }
-        : (() => {
-            const byCategory = new Map<string, number>();
-            for (const item of selectedMonthItems) {
-              if (item.flow !== "expense" || item.isTransfer) continue;
-              byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + item.amount);
-            }
-            const entries = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
-            return {
-              labels: entries.map(([c]) => c),
-              values: entries.map(([, v]) => v),
-              total: entries.reduce((sum, [, v]) => sum + v, 0),
-            };
-          })();
-
-    const revenueTotal =
-      summary?.totalIncome ??
-      selectedMonthItems.filter((i) => i.flow === "income" && !i.isTransfer).reduce((s, i) => s + i.amount, 0);
-
-    return {
-      expenseBreakdown,
-      revenueTotal,
-      delta: revenueTotal - expenseBreakdown.total,
-      transferCount: summary?.transferCount ?? selectedMonthItems.filter((i) => i.isTransfer).length,
-      expenseTransactionCount:
-        page.data.pagedTransactions?.total ?? selectedMonthItems.filter((i) => i.flow === "expense").length,
-    };
-  });
-
-  const previousMonthKey = $derived.by(() => {
-    const match = /^(\d{4})-(\d{2})$/.exec(selectedMonthKey);
-    if (!match) return "";
-    const d = new Date(Number(match[1]), Number(match[2]) - 2, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  const selectedMonthSummary = $derived(
+    buildMonthSummary(page.data.currentMonthSummary, selectedMonthItems, page.data.pagedTransactions?.total),
+  );
 
   const selectedMonthDailyTrend = $derived.by(() => {
     const values = buildDailyExpenseTrend(selectedMonthKey, page.data.currentMonthSummary?.dailyExpenseBreakdown, selectedMonthItems);
-    return { labels: Array.from({ length: values.length }, (_, i) => String(i + 1)), values };
+    const today = new Date();
+    const isCurrentMonth = selectedMonthKey === getMonthKey(today);
+    const cutoff = isCurrentMonth ? today.getDate() : values.length;
+    const capped = values.map((v, i) => (i < cutoff ? v : null)) as (number | null)[];
+    return { labels: Array.from({ length: values.length }, (_, i) => String(i + 1)), values: capped };
   });
 
   const previousMonthDailyExpenseValues = $derived(
@@ -101,41 +70,15 @@
     ),
   );
 
-  const currentMonthCosts = $derived.by<import("$lib/utils/budget").CostItem[]>(() => {
-    const breakdown = page.data.currentMonthSummary?.categoryBreakdown ?? [];
-    const categories = page.data.allCategories ?? [];
-    if (breakdown.length === 0) return financeView.costs;
+  const currentMonthCosts = $derived<CostItem[]>(
+    buildCurrentMonthCosts(
+      page.data.currentMonthSummary?.categoryBreakdown ?? [],
+      page.data.currentMonthSummary?.subCategoryBreakdown ?? [],
+      page.data.allCategories ?? [],
+      financeView.costs,
+    ),
+  );
 
-    const catItems = breakdown.map((b: { category: string; totalAmount: number }, i: number) => {
-      const cat = categories.find((c: import("@finance-app/shared-types").FinanceCategory) => c.type === "expense" && c.name === b.category);
-      return {
-        id: `month-cat-${i}`,
-        name: b.category,
-        category: b.category,
-        categoryId: cat?.id,
-        amount: b.totalAmount,
-        rawAmount: b.totalAmount.toFixed(2),
-        frequency: "monthly" as const,
-      };
-    });
-
-    const subItems = (page.data.currentMonthSummary?.subCategoryBreakdown ?? []).map(
-      (s: { categoryId: string | null; subCategoryId: string; subCategoryName: string; totalAmount: number }, i: number) => ({
-        id: `month-sub-${i}`,
-        name: s.subCategoryName,
-        category: s.subCategoryName,
-        categoryId: s.categoryId ?? undefined,
-        subCategoryId: s.subCategoryId,
-        amount: s.totalAmount,
-        rawAmount: s.totalAmount.toFixed(2),
-        frequency: "monthly" as const,
-      }),
-    );
-
-    return [...catItems, ...subItems];
-  });
-
-  const overviewRecentTransactions = $derived(sourceTransactions.slice(0, 3));
   const pagedDisplayTransactions = $derived(page.data.pagedTransactions?.transactions.map(toDisplayTransaction) ?? []);
 </script>
 
@@ -247,7 +190,7 @@
     <TransactionList
       title="Recent Transactions"
       subtitle="Latest 3 from synced bank data, or your manual entries if bank data is not available."
-      items={overviewRecentTransactions}
+      items={sourceTransactions.slice(0, 3)}
       pageSize={3}
       hidePager={true}
     />
@@ -304,7 +247,7 @@
                     ? 'text-emerald-400'
                     : 'text-rose-400'}"
                 >
-                  {tx.flow === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
+                  {tx.flow === "income" ? "+" : "-"}{formatCurrency(tx.amount, tx.isoCurrencyCode)}
                 </TableCell>
               </TableRow>
             {/each}

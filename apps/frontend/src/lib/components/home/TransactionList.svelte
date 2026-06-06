@@ -12,6 +12,7 @@
     merchant: string;
     category: string;
     amount: number;
+    isoCurrencyCode: string | null;
     flow: "income" | "expense";
     source: "bank" | "manual";
   }
@@ -76,7 +77,7 @@
           <div class="flex items-start justify-between gap-3">
             <p class="min-w-0 truncate text-base font-medium text-slate-100">{tx.name}</p>
             <p class="shrink-0 text-base font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
-              {tx.flow === "income" ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
+              {tx.flow === "income" ? "+" : "-"}{formatCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
             </p>
           </div>
           <div class="mt-2 flex items-center justify-between gap-2">

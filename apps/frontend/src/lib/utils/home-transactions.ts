@@ -1,4 +1,4 @@
-import type { BankTransaction } from "@finance-app/shared-types";
+import type { BankTransaction, TransactionSummary } from "@finance-app/shared-types";
 import type { EffectiveFinanceView } from "./finance-view";
 import { categorizeBankTransaction } from "./finance-view";
 import { parseLocalCalendarDate, getMonthKey, formatDateLabel } from "./date";
@@ -11,6 +11,7 @@ export interface DisplayTransaction {
   merchant: string;
   category: string;
   amount: number;
+  isoCurrencyCode: string | null;
   flow: "income" | "expense";
   source: "bank" | "manual";
   isTransfer: boolean;
@@ -33,6 +34,7 @@ export function buildSourceTransactions(financeView: EffectiveFinanceView): Disp
         merchant: tx.merchantName ?? "-",
         category: tx.resolvedCategory,
         amount: Math.abs(tx.amount),
+        isoCurrencyCode: tx.isoCurrencyCode,
         flow: tx.flow,
         source: "bank" as const,
         isTransfer: tx.isTransfer,
@@ -52,6 +54,7 @@ export function buildSourceTransactions(financeView: EffectiveFinanceView): Disp
       merchant: "Manual",
       category: cost.category || "Other",
       amount: Math.abs(cost.amount),
+      isoCurrencyCode: null,
       flow: "expense" as const,
       source: "manual" as const,
       isTransfer: false,
@@ -64,6 +67,7 @@ export function buildSourceTransactions(financeView: EffectiveFinanceView): Disp
       merchant: "Manual",
       category: revenue.category || "Other",
       amount: Math.abs(revenue.amount),
+      isoCurrencyCode: null,
       flow: "income" as const,
       source: "manual" as const,
       isTransfer: false,
@@ -123,6 +127,54 @@ export function buildDailyExpenseTrend(
   return days;
 }
 
+export interface MonthSummary {
+  expenseBreakdown: { labels: string[]; values: number[]; total: number };
+  revenueTotal: number;
+  delta: number;
+  transferCount: number;
+  expenseTransactionCount: number;
+}
+
+export function buildMonthSummary(
+  serverSummary: TransactionSummary | null | undefined,
+  items: DisplayTransaction[],
+  pagedTotal: number | undefined,
+): MonthSummary {
+  const breakdown = serverSummary?.categoryBreakdown;
+  const expenseBreakdown =
+    breakdown && breakdown.length > 0
+      ? {
+          labels: breakdown.map((e) => e.category),
+          values: breakdown.map((e) => e.totalAmount),
+          total: serverSummary!.totalExpenses,
+        }
+      : (() => {
+          const byCategory = new Map<string, number>();
+          for (const item of items) {
+            if (item.flow !== "expense" || item.isTransfer) continue;
+            byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + item.amount);
+          }
+          const entries = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+          return {
+            labels: entries.map(([c]) => c),
+            values: entries.map(([, v]) => v),
+            total: entries.reduce((sum, [, v]) => sum + v, 0),
+          };
+        })();
+
+  const revenueTotal =
+    serverSummary?.totalIncome ??
+    items.filter((i) => i.flow === "income" && !i.isTransfer).reduce((s, i) => s + i.amount, 0);
+
+  return {
+    expenseBreakdown,
+    revenueTotal,
+    delta: revenueTotal - expenseBreakdown.total,
+    transferCount: serverSummary?.transferCount ?? items.filter((i) => i.isTransfer).length,
+    expenseTransactionCount: pagedTotal ?? items.filter((i) => i.flow === "expense").length,
+  };
+}
+
 export function toDisplayTransaction(tx: BankTransaction): DisplayTransaction {
   const cat = categorizeBankTransaction(tx);
   return {
@@ -133,6 +185,7 @@ export function toDisplayTransaction(tx: BankTransaction): DisplayTransaction {
     merchant: tx.merchantName ?? "-",
     category: cat.resolvedCategory,
     amount: Math.abs(tx.amount),
+    isoCurrencyCode: tx.isoCurrencyCode,
     flow: cat.flow,
     source: "bank" as const,
     isTransfer: cat.isTransfer,

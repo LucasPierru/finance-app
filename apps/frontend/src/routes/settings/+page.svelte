@@ -20,6 +20,8 @@
   import { Label } from "$lib/components/ui/label";
   import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "$lib/components/ui/card";
+  import { formatDate } from "$lib/utils/date";
+  import { formatCurrency } from "$lib/utils/format";
 
   const defaultSettings = {
     annualReturn: 7,
@@ -67,22 +69,6 @@
   ];
 
   let selectedPlaidCountry = $state("US");
-
-  function fmtCurrency(value: number | null, currencyCode: string | null): string {
-    if (value === null) return "-";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currencyCode ?? "USD",
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-
-  function fmtDate(value: string | null): string {
-    if (!value) return "Never";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "Never";
-    return parsed.toLocaleString();
-  }
 
   async function ensurePlaidScriptLoaded(): Promise<boolean> {
     if (typeof window === "undefined") return false;
@@ -331,7 +317,7 @@
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p class="font-medium text-slate-200">{connection.institutionName ?? "Bank Account"}</p>
-                <p class="text-xs text-slate-500">Last sync: {fmtDate(connection.lastSyncAt)}</p>
+                <p class="text-xs text-slate-500">Last sync: {formatDate(connection.lastSyncAt)}</p>
               </div>
               <div class="flex gap-2">
                 <Button size="sm" onclick={syncBankData} disabled={$bankLoading}>
@@ -375,10 +361,10 @@
                         <td class="px-4 py-3 text-sm text-slate-400">{account.type} / {account.subtype ?? "-"}</td>
                         <td class="px-4 py-3 text-sm text-slate-400">{account.mask ?? "-"}</td>
                         <td class="px-4 py-3 text-sm text-slate-300">
-                          {fmtCurrency(account.availableBalance, account.isoCurrencyCode)}
+                          {formatCurrency(account.availableBalance, account.isoCurrencyCode)}
                         </td>
                         <td class="px-4 py-3 text-sm text-slate-200 font-semibold">
-                          {fmtCurrency(account.currentBalance, account.isoCurrencyCode)}
+                          {formatCurrency(account.currentBalance, account.isoCurrencyCode)}
                         </td>
                       </tr>
                     {/each}

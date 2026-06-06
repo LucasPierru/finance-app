@@ -19,6 +19,7 @@
   import { httpPostManualTransaction, httpPatchTransaction, httpDeleteTransaction } from "$lib/requests/transactions";
   import type { FinanceCategory } from "@finance-app/shared-types";
   import { createTransactionRequest, get } from "$lib/stores/ui";
+  import { formatCurrency } from "$lib/utils/format";
   import Pagination from "$lib/components/Pagination.svelte";
   import DeleteModal from "$lib/components/DeleteModal.svelte";
 
@@ -140,14 +141,6 @@
   $effect(() => {
     if (recurringPage > recurringTotalPages) recurringPage = 1;
   });
-
-  function fmtCurrency(amount: number, currencyCode: string | null): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currencyCode ?? "USD",
-      maximumFractionDigits: 2,
-    }).format(amount);
-  }
 
   function switchMode(next: Mode) {
     onModeChange(next);
@@ -475,7 +468,7 @@
                   <div class="flex items-start justify-between gap-3">
                     <p class="min-w-0 truncate text-base font-medium text-slate-100">{tx.name}</p>
                     <p class="shrink-0 text-base font-semibold {tx.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
-                      {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
+                      {tx.flow === "income" ? "+" : "-"}{formatCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                     </p>
                   </div>
                   <!-- Row 2: category + date + badges + actions -->
@@ -590,7 +583,7 @@
                           ? 'text-emerald-400'
                           : 'text-rose-400'}"
                       >
-                        {tx.flow === "income" ? "+" : "-"}{fmtCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
+                        {tx.flow === "income" ? "+" : "-"}{formatCurrency(Math.abs(tx.amount), tx.isoCurrencyCode)}
                       </TableCell>
                       <TableCell class="px-2 py-3">
                         <div class="flex items-center gap-0.5">
@@ -637,7 +630,7 @@
             <div class="flex items-start justify-between gap-3">
               <p class="min-w-0 truncate text-base font-medium text-slate-100">{entry.displayName}</p>
               <p class="shrink-0 text-base font-semibold {entry.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
-                {fmtCurrency(entry.averageAmount, "USD")}
+                {formatCurrency(entry.averageAmount, "USD")}
               </p>
             </div>
             <div class="mt-2 flex items-center justify-between gap-2">
@@ -677,7 +670,7 @@
                 <TableCell
                   class="px-5 py-3 font-semibold {entry.flow === 'income' ? 'text-emerald-400' : 'text-rose-400'}"
                 >
-                  {fmtCurrency(entry.averageAmount, "USD")}
+                  {formatCurrency(entry.averageAmount, "USD")}
                 </TableCell>
                 <TableCell class="px-5 py-3 text-slate-400">{entry.occurrences}</TableCell>
                 <TableCell class="px-5 py-3 text-slate-400">{entry.lastSeenDate}</TableCell>
