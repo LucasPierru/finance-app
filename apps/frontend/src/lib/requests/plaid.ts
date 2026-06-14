@@ -5,21 +5,21 @@ export async function httpGetPlaidState(headers: HeadersInit): Promise<BankConne
 export async function httpGetPlaidState(): Promise<BankConnectionState>;
 export async function httpGetPlaidState(headers?: HeadersInit): Promise<BankConnectionState | null> {
   return headers !== undefined
-    ? api.get<BankConnectionState>('/api/plaid/state', { headers }).catch(() => null)
-    : api.get('/api/plaid/state');
+    ? api.get<BankConnectionState>('/v1/plaid/state', { headers }).catch(() => null)
+    : api.get('/v1/plaid/state');
 }
 
 export const httpPostPlaidLinkToken = (countryCode: string): Promise<{ linkToken: string }> =>
-  api.post('/api/plaid/link-token', { countryCode });
+  api.post('/v1/plaid/link-token', { countryCode });
 
 export const httpPostPlaidExchangePublicToken = (
   publicToken: string,
   institutionName: string | null
 ): Promise<BankConnectionState> =>
-  api.post('/api/plaid/exchange-public-token', { publicToken, institutionName });
+  api.post('/v1/plaid/exchange-public-token', { publicToken, institutionName });
 
 export const httpPostPlaidSync = (): Promise<BankConnectionState> =>
-  api.post('/api/plaid/sync');
+  api.post('/v1/plaid/sync');
 
 export const httpDeletePlaidConnection = (itemId: string): Promise<{ connected: boolean }> =>
-  api.delete(`/api/plaid/connection?itemId=${encodeURIComponent(itemId)}`);
+  api.delete(`/v1/plaid/connection?itemId=${encodeURIComponent(itemId)}`);

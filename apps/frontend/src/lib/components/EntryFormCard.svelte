@@ -34,7 +34,7 @@
 
   onMount(async () => {
     try {
-      const data = await api.get<FinanceCategory[]>('/api/finance/categories');
+      const data = await api.get<FinanceCategory[]>('/v1/finance/categories');
       categories = data;
       const filtered = data.filter((c) => c.type === variant);
       if (filtered.length > 0) categoryId = filtered[0].id;

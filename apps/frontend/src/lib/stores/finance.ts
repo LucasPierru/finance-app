@@ -201,7 +201,7 @@ export async function fetchFinanceState(): Promise<void> {
 
   financeStatePromise = (async () => {
     try {
-      const state = await api.get<BackendFinanceStatePayload>('/api/finance/state');
+      const state = await api.get<BackendFinanceStatePayload>('/v1/finance/state');
       revenuesStore.hydrate(state.revenues.map(normalizeFinanceItem));
       costsStore.hydrate(state.costs.map(normalizeFinanceItem));
       investmentSettingsStore.hydrate(normalizeInvestmentSettings(state.investmentSettings));

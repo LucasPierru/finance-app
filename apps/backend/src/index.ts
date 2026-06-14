@@ -8,6 +8,7 @@ import { authRouter } from "@routes/auth";
 import { budgetRouter } from "@routes/budget";
 import { financeRouter } from "@routes/finance";
 import { plaidRouter } from "@routes/plaid";
+import { transactionsRouter } from "@routes/transactions";
 
 const app = express();
 
@@ -31,10 +32,11 @@ app.get("/health", async (_req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-app.use("/api/auth", authRouter);
-app.use("/api/budget", requireAuth, budgetRouter);
-app.use("/api/finance", requireAuth, financeRouter);
-app.use("/api/plaid", requireAuth, plaidRouter);
+app.use("/v1/auth", authRouter);
+app.use("/v1/budget", requireAuth, budgetRouter);
+app.use("/v1/finance", requireAuth, financeRouter);
+app.use("/v1/plaid", requireAuth, plaidRouter);
+app.use("/v1/transactions", requireAuth, transactionsRouter);
 
 app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error(`[${req.method} ${req.path}] Error:`, error, new Date().toISOString());
